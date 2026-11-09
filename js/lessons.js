@@ -175,7 +175,7 @@ function rescheduleSheet(l, isResched) {
   const sh = openSheet({
     title: isResched ? 'Reprogramar clase' : 'Agendar reposición',
     body: () => `<div class="muted small" style="margin:-4px 0 14px">${esc(lessonTitle(l))} · original: ${fmtDate(l.date, { dow: 1 })} ${l.start}</div>
-      <div class="grid2">${field('Nueva fecha', inp('date', addDays(l.date, 7) < today() ? today() : addDays(l.date, 7), { type: 'date' }))}${field('Hora', inp('start', l.start, { type: 'time' }))}</div>
+      <div class="grid2">${field('Nueva fecha', inp('date', l.date < today() ? today() : l.date, { type: 'date' }))}${field('Hora', inp('start', l.start, { type: 'time' }))}</div>
       ${field('Duración (min)', inp('duration', l.duration, { type: 'number', attrs: 'min="5" step="5" inputmode="numeric"' }))}
       <div class="hint">${isResched ? 'La clase original queda como “reprogramada” y no se cuenta. Se cobra la reposición cuando se realice.' : 'La reposición queda vinculada a la clase original. Si la original ya se cobró, la reposición no se cobra otra vez (salvo que lo configures en la escuela).'}</div>
       <button class="btn pri full" data-save>${ic('check', 'sm')}Guardar</button>`,
@@ -195,10 +195,13 @@ function rescheduleSheet(l, isResched) {
     }
   });
 }
+// aviso suave si a esa hora ya hay otra clase (no bloquea nada)
 function overlapWarn(l) {
+  if (!l || OFF.includes(l.status)) return;
   const a = toMin(l.start), b = a + (+l.duration || 0);
-  const o = occurrences(l.date, l.date).find(x => x.id !== l.id && !OFF.includes(x.status) && toMin(x.start) < b && toMin(x.start) + (+x.duration || 0) > a && !(l.seriesId && x.seriesId === l.seriesId && x.seriesDate === l.seriesDate));
-  if (o) setTimeout(() => toast('Atención: se superpone con ' + lessonTitle(o) + ' (' + o.start + ')', 'err'), 2700);
+  const same = x => x.id === l.id || (l.seriesId && x.seriesId === l.seriesId && x.seriesDate === (l.seriesDate || l.date)) || (l.makeupOf && x.id === l.makeupOf);
+  const o = occurrences(l.date, l.date).find(x => !same(x) && !OFF.includes(x.status) && toMin(x.start) < b && toMin(x.start) + (+x.duration || 0) > a);
+  if (o) setTimeout(() => toast(`Ojo: a esa hora también tenés ${lessonTitle(o)} (${o.start})`), 2700);
 }
 
 /* ---------- alta y edición ---------- */
@@ -215,21 +218,26 @@ function lessonForm(o = {}) {
     duration: occ ? +occ.duration : (+S.settings.defDur || 60), notes: occ ? occ.notes || '' : '',
     repeat: ser ? (+ser.interval || 1) : 0, days: ser ? [...ser.days] : null, until: ser ? ser.until || '' : '', markDone: !!o.markDone, q: ''
   };
+  const poolHtml = () => {
+    const q = norm(F.q);
+    const pool = S.students.filter(s => s.status !== 'inactive' && !F.studentIds.includes(s.id) && (!q || norm(sName(s)).includes(q))).sort((a, b) => sName(a).localeCompare(sName(b))).slice(0, q ? 20 : 8);
+    return pool.map(s => `<button type="button" class="chip" data-add="${s.id}">${ic('plus', 'sm')}${esc(sName(s))}</button>`).join('')
+      + (!S.students.length ? '<span class="small muted">Todavía no tenés alumnos. <a href="#" data-newstu>Crear uno</a></span>' : '')
+      + (q && !pool.length ? `<button type="button" class="chip" data-newstu>${ic('userplus', 'sm')}Crear “${esc(F.q.trim())}”</button>` : '');
+  };
   const sh = openSheet({
     wide: true,
     title: occ ? (isEvent(occ) ? 'Editar compromiso' : 'Editar clase') : 'Nueva',
     body: () => {
       const days = F.days || [dow(F.date)];
       const selected = F.studentIds.map(id => student(id)).filter(Boolean);
-      const q = norm(F.q);
-      const pool = S.students.filter(s => s.status !== 'inactive' && !F.studentIds.includes(s.id) && (!q || norm(sName(s)).includes(q))).sort((a, b) => sName(a).localeCompare(sName(b))).slice(0, q ? 20 : 8);
       const autoMode = F.studentIds.length > 1 ? 'group' : 'ind';
       return `${occ ? '' : `<div class="seg" style="margin-bottom:16px"><button data-kind="lesson" class="${F.kind === 'lesson' ? 'on' : ''}">Clase</button><button data-kind="event" class="${F.kind === 'event' ? 'on' : ''}">Compromiso</button></div>`}
       ${F.kind === 'event' ? field('Título', inp('title', F.title, { ph: 'Ej: Recital, reunión, ensayo…' })) : `
         <label class="field"><span>Alumno${F.studentIds.length > 1 ? 's' : ''}</span>
           ${selected.length ? `<div class="chips" style="flex-wrap:wrap;margin-bottom:8px">${selected.map(s => `<button type="button" class="chip on" data-rm="${s.id}">${esc(sName(s))} ${ic('x', 'sm')}</button>`).join('')}</div>` : ''}
-          <div class="search">${ic('search', 'sm')}<input class="inp" name="q" value="${esc(F.q)}" placeholder="${selected.length ? 'Agregar otro alumno (clase grupal)' : 'Buscar alumno'}" autocomplete="off"></div>
-          <div class="chips" style="flex-wrap:wrap;margin-top:8px">${pool.map(s => `<button type="button" class="chip" data-add="${s.id}">${ic('plus', 'sm')}${esc(sName(s))}</button>`).join('')}${!S.students.length ? '<span class="small muted">Todavía no tenés alumnos. <a href="#" data-newstu>Crear uno</a></span>' : ''}${q && !pool.length ? `<button type="button" class="chip" data-newstu>${ic('userplus', 'sm')}Crear “${esc(F.q)}”</button>` : ''}</div>
+          <div class="search">${ic('search', 'sm')}<input class="inp" name="q" type="search" value="${esc(F.q)}" placeholder="${selected.length ? 'Agregar otro alumno (clase grupal)' : 'Buscar alumno'}" autocomplete="off" autocorrect="off"></div>
+          <div class="chips" style="flex-wrap:wrap;margin-top:8px" data-pool>${poolHtml()}</div>
         </label>
         <div class="grid2">
           ${activeSchools().length > 1 || (F.schoolId && school(F.schoolId).archived) ? field('Escuela', sel('schoolId', F.schoolId, S.schools.filter(s => !s.archived || s.id === F.schoolId).map(s => [s.id, s.name]))) : ''}
@@ -247,7 +255,8 @@ function lessonForm(o = {}) {
     },
     mount: (el, sh) => {
       const grab = () => { // conserva lo escrito antes de redibujar
-        ['title', 'date', 'start', 'notes', 'until', 'q'].forEach(n => { const v = fval(el, n); if (v !== undefined) F[n] = v; });
+        ['title', 'date', 'start', 'notes', 'until'].forEach(n => { const v = fval(el, n); if (v !== undefined) F[n] = v; });
+        const qi = el.querySelector('[name=q]'); if (qi) F.q = qi.value;
         const sc = fval(el, 'schoolId'); if (sc !== undefined) F.schoolId = sc;
         const m = fval(el, 'mode'); if (m !== undefined) F.mode = m;
         const d = +fval(el, 'duration'); if (d) F.duration = d;
@@ -256,15 +265,18 @@ function lessonForm(o = {}) {
       };
       const rr = () => { grab(); sh.render(); };
       el.querySelectorAll('[data-kind]').forEach(b => b.onclick = () => { grab(); F.kind = b.dataset.kind; sh.render(); });
-      el.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
-        grab(); F.studentIds.push(b.dataset.add); F.q = '';
-        if (F.studentIds.length === 1) { const s = student(b.dataset.add); if (s && s.schoolId && byId('schools', s.schoolId)) F.schoolId = s.schoolId; }
-        sh.render();
-      });
+      const bindPool = () => {
+        el.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+          grab(); F.studentIds.push(b.dataset.add); F.q = '';
+          if (F.studentIds.length === 1) { const s = student(b.dataset.add); if (s && s.schoolId && byId('schools', s.schoolId)) F.schoolId = s.schoolId; }
+          sh.render();
+        });
+        el.querySelectorAll('[data-newstu]').forEach(b => b.onclick = e => { e.preventDefault(); grab(); studentForm(null, { first: F.q.trim(), onSave: s => { F.studentIds.push(s.id); F.q = ''; if (F.studentIds.length === 1) F.schoolId = s.schoolId; sh.render(); } }); });
+      };
+      bindPool();
       el.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { grab(); F.studentIds = F.studentIds.filter(x => x !== b.dataset.rm); sh.render(); });
-      el.querySelectorAll('[data-newstu]').forEach(b => b.onclick = e => { e.preventDefault(); grab(); studentForm(null, { first: F.q, onSave: s => { F.studentIds.push(s.id); F.q = ''; if (F.studentIds.length === 1) F.schoolId = s.schoolId; sh.render(); } }); });
       const q = el.querySelector('[name=q]');
-      if (q) { let t; q.oninput = () => { clearTimeout(t); t = setTimeout(() => { const pos = q.selectionStart; rr(); const n = el.querySelector('[name=q]'); n.focus(); n.setSelectionRange(pos, pos); }, 180); }; }
+      if (q) q.oninput = () => { F.q = q.value; el.querySelector('[data-pool]').innerHTML = poolHtml(); bindPool(); };
       el.querySelectorAll('[data-dur]').forEach(b => b.onclick = () => { grab(); F.duration = +b.dataset.dur; sh.render(); });
       el.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { grab(); const d = +b.dataset.day; const ds = F.days || [dow(F.date)]; F.days = ds.includes(d) ? ds.filter(x => x !== d) : [...ds, d]; sh.render(); });
       const st = el.querySelector('[name=start]'), en = el.querySelector('[name=end]'), du = el.querySelector('[name=duration]');
@@ -306,10 +318,12 @@ function lessonForm(o = {}) {
           } else {
             const D = occ.seriesDate || occ.date;
             const keepStatus = !occ.virtual && occ.status !== 'scheduled' ? occ : null;
+            const later = S.lessons.filter(x => x.seriesId === ser.id && x.seriesDate > D && x.id !== occ.id && (x.status !== 'scheduled' || S.lessonNotes.some(n => n.lessonId === x.id)));
             endSeriesAt(ser, D);
             const from = F.date < D ? F.date : D;
             const ns = upsert('series', Object.assign({ id: uid(), days: F.repeat ? days : [dow(F.date)], interval: F.repeat || 1, from, until: F.repeat ? (F.until || '') : '', skip: [] }, base));
             if (keepStatus) { keepStatus.seriesId = ns.id; keepStatus.seriesDate = F.date; Object.assign(keepStatus, base, { date: F.date }); upsert('lessons', keepStatus); }
+            later.forEach(x => { x.seriesId = ns.id; upsert('lessons', x); });
             saved = virtualOcc(ns, F.date);
           }
           toast('Cambios guardados');

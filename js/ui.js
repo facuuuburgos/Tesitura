@@ -87,14 +87,22 @@ function openSheet(o) {
   SHEETS.push(sh);
   renderSheet(sh);
   scrim.onclick = () => closeSheet(sh);
+  scrim.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
   requestAnimationFrame(() => { scrim.classList.add('open'); el.classList.add('open'); });
   // deslizar hacia abajo para cerrar (desde la barra superior)
   let y0 = null;
   el.addEventListener('touchstart', e => { if (e.target.closest('.sh,.grab')) y0 = e.touches[0].clientY; }, { passive: true });
-  el.addEventListener('touchmove', e => { if (y0 != null) { const dy = e.touches[0].clientY - y0; if (dy > 0) el.style.transform = `translateY(${dy}px)`; } }, { passive: true });
+  el.addEventListener('touchmove', e => { if (!e.target.closest('.sb')) e.preventDefault(); if (y0 != null) { const dy = e.touches[0].clientY - y0; if (dy > 0) el.style.transform = `translateY(${dy}px)`; } }, { passive: false });
   el.addEventListener('touchend', e => { if (y0 == null) return; const dy = e.changedTouches[0].clientY - y0; y0 = null; el.style.transform = ''; if (dy > 90) closeSheet(sh); });
-  document.body.style.overflow = 'hidden';
+  lockBody(true);
   return sh;
+}
+// fija la página de fondo mientras hay una hoja abierta (en iPhone, si no, se mueve la barra de abajo)
+let lockY = 0;
+function lockBody(on) {
+  const b = document.body;
+  if (on && !b.classList.contains('locked')) { lockY = window.scrollY; b.style.top = -lockY + 'px'; b.classList.add('locked'); }
+  else if (!on && b.classList.contains('locked')) { b.classList.remove('locked'); b.style.top = ''; window.scrollTo(0, lockY); }
 }
 function renderSheet(sh) {
   const o = sh.o, st = sh.el.querySelector('.sb') ? sh.el.querySelector('.sb').scrollTop : 0;
@@ -109,7 +117,7 @@ function closeSheet(sh) {
   const i = SHEETS.indexOf(sh); if (i >= 0) SHEETS.splice(i, 1);
   sh.el.classList.remove('open'); sh.scrim.classList.remove('open');
   setTimeout(() => { sh.el.remove(); sh.scrim.remove(); }, 300);
-  if (!SHEETS.length) document.body.style.overflow = '';
+  if (!SHEETS.length) lockBody(false);
   if (sh.o.onClose) sh.o.onClose();
 }
 const closeAll = () => [...SHEETS].reverse().forEach(closeSheet);

@@ -4,28 +4,39 @@
    ========================================================= */
 const ST_STATUS = { active: 'Activo', paused: 'Pausado', inactive: 'Inactivo' };
 
-VIEWS.students = () => {
-  const q = norm(UI.stuQ);
+// próxima clase de cada alumno, en una sola pasada
+function nextLessons() {
+  const t = today(), nm = nowMin(), m = {};
+  occurrences(t, addDays(t, 60)).forEach(l => { if (l.status !== 'scheduled' || (l.date === t && toMin(l.start) < nm - 30)) return; (l.studentIds || []).forEach(id => { if (!m[id]) m[id] = l; }); });
+  return m;
+}
+function stuListHtml() {
+  const q = norm(UI.stuQ), multi = activeSchools().length > 1, nxt = nextLessons();
   const list = S.students.filter(s => (UI.stuFilter === 'all' || s.status === UI.stuFilter) && (!UI.stuSchool || s.schoolId === UI.stuSchool) && (!q || norm(sName(s) + ' ' + (s.email || '') + ' ' + (s.phone || '')).includes(q)))
     .sort((a, b) => sName(a).localeCompare(sName(b)));
+  const songsN = {}; S.studentSongs.forEach(x => { if (!x.endedAt) songsN[x.studentId] = (songsN[x.studentId] || 0) + 1; });
+  return list.length ? `<div class="list">${list.map(s => {
+    const nx = s.status === 'active' ? nxt[s.id] : null, songs = songsN[s.id] || 0;
+    return `<a class="li av" href="#/student/${s.id}">${avatar(s)}<div class="grow"><div class="t ell">${esc(sName(s))}</div><div class="s ell">${multi ? esc(school(s.schoolId).name) + ' · ' : ''}${nx ? 'Próxima: ' + fmtDate(nx.date, { rel: 1, dow: 1 }) + ' ' + nx.start : (s.status !== 'active' ? ST_STATUS[s.status] : 'Sin clases agendadas')}${songs ? ` · ${songs} canción${songs > 1 ? 'es' : ''}` : ''}</div></div>${ic('chevR', 'sm chev')}</a>`;
+  }).join('')}</div>`
+    : `<div class="empty">${ic('users')}<div class="t">${S.students.length ? 'Sin resultados' : 'Todavía no hay alumnos'}</div>${S.students.length ? '' : `<div class="small">Agregá tu primer alumno para empezar.</div><div class="sp"></div><button class="btn pri" data-act="newStudent">${ic('plus', 'sm')}Nuevo alumno</button>`}</div>`;
+}
+VIEWS.students = () => {
   const cnt = k => S.students.filter(s => s.status === k).length;
   const multi = activeSchools().length > 1;
   return `${topbar('Alumnos', { right: `<button class="iconbtn acc" data-act="newStudent" aria-label="Nuevo alumno">${ic('plus')}</button>` })}
-    <div class="search" style="margin-bottom:10px">${ic('search', 'sm')}<input class="inp" id="stuq" value="${esc(UI.stuQ)}" placeholder="Buscar" autocomplete="off"></div>
+    <div class="search" style="margin-bottom:10px">${ic('search', 'sm')}<input class="inp" id="stuq" type="search" value="${esc(UI.stuQ)}" placeholder="Buscar" autocomplete="off" autocorrect="off" enterkeyhint="search"></div>
     <div class="chips" style="margin-bottom:${multi ? 8 : 14}px">
       ${[['active', 'Activos'], ['paused', 'Pausados'], ['inactive', 'Inactivos'], ['all', 'Todos']].map(([k, l]) => `<button class="chip ${UI.stuFilter === k ? 'on' : ''}" data-act="stuFilter" data-v="${k}">${l}${k !== 'all' ? ` <span class="dim">${cnt(k)}</span>` : ''}</button>`).join('')}
     </div>
     ${multi ? `<div class="chips" style="margin-bottom:14px"><button class="chip ${!UI.stuSchool ? 'on' : ''}" data-act="stuSchool" data-v="">Todas las escuelas</button>${activeSchools().map(s => `<button class="chip ${UI.stuSchool === s.id ? 'on' : ''}" data-act="stuSchool" data-v="${s.id}">${schoolDot(s)}${esc(s.name)}</button>`).join('')}</div>` : ''}
-    ${list.length ? `<div class="list">${list.map(s => {
-    const nx = s.status === 'active' ? nextLessonOf(s.id) : null;
-    const songs = S.studentSongs.filter(x => x.studentId === s.id && !x.endedAt).length;
-    return `<a class="li av" href="#/student/${s.id}">${avatar(s)}<div class="grow"><div class="t ell">${esc(sName(s))}</div><div class="s ell">${multi ? esc(school(s.schoolId).name) + ' · ' : ''}${nx ? 'Próxima: ' + fmtDate(nx.date, { rel: 1, dow: 1 }) + ' ' + nx.start : (s.status !== 'active' ? ST_STATUS[s.status] : 'Sin clases agendadas')}${songs ? ` · ${songs} canción${songs > 1 ? 'es' : ''}` : ''}</div></div>${ic('chevR', 'sm chev')}</a>`;
-  }).join('')}</div>`
-      : `<div class="empty">${ic('users')}<div class="t">${S.students.length ? 'Sin resultados' : 'Todavía no hay alumnos'}</div>${S.students.length ? '' : `<div class="small">Agregá tu primer alumno para empezar.</div><div class="sp"></div><button class="btn pri" data-act="newStudent">${ic('plus', 'sm')}Nuevo alumno</button>`}</div>`}`;
+    <div id="stulist">${stuListHtml()}</div>`;
 };
 AFTER.students = m => {
-  const q = m.querySelector('#stuq'); let t;
-  q.oninput = () => { clearTimeout(t); t = setTimeout(() => { UI.stuQ = q.value; render(); const n = $('#stuq'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 150); };
+  // al escribir solo se actualiza la lista, sin redibujar la pantalla
+  const q = m.querySelector('#stuq');
+  q.oninput = () => { UI.stuQ = q.value; $('#stulist').innerHTML = stuListHtml(); };
+  q.onkeydown = e => { if (e.key === 'Enter') q.blur(); };
 };
 ACT.stuFilter = el => { UI.stuFilter = el.dataset.v; render(); };
 ACT.stuSchool = el => { UI.stuSchool = el.dataset.v; render(); };
@@ -137,14 +148,17 @@ function songForm(ss, studentId, after) {
     manual: ss ? !!ss.manual : false, workKey: ss ? workKey(ss) : null, startedAt: ss ? ss.startedAt || '' : today(), link: ss ? ss.link || '' : '', karaoke: ss ? ss.karaoke || '' : '',
     recordings: ss ? clone(ss.recordings || []) : [], notes: ss ? ss.notes || '' : '', songId: ss ? ss.songId : null
   };
+  const suggHtml = () => {
+    const q = norm(F.title);
+    const sugg = !F.songId && q.length > 1 ? S.songs.filter(x => norm(x.title).includes(q)).slice(0, 4) : [];
+    return sugg.length ? `<div class="chips" style="flex-wrap:wrap;margin:-4px 0 12px">${sugg.map(x => `<button type="button" class="chip" data-sugg="${x.id}">${esc(x.title)} · ${esc(x.artist || '')} ${x.key ? '(' + keyName(x.key) + ')' : ''}</button>`).join('')}</div>` : '';
+  };
   const sh = openSheet({
     title: ss ? 'Editar canción' : 'Nueva canción',
     body: () => {
       const wk = F.manual ? F.workKey : transposeKey(F.key, F.transpose);
-      const q = norm(F.title);
-      const sugg = !F.songId && q.length > 1 ? S.songs.filter(x => norm(x.title).includes(q)).slice(0, 4) : [];
       return `${field('Canción', inp('title', F.title, { ph: 'Nombre de la canción', attrs: 'autocomplete="off"' }))}
-        ${sugg.length ? `<div class="chips" style="flex-wrap:wrap;margin:-4px 0 12px">${sugg.map(x => `<button type="button" class="chip" data-sugg="${x.id}">${esc(x.title)} · ${esc(x.artist || '')} ${x.key ? '(' + keyName(x.key) + ')' : ''}</button>`).join('')}</div>` : ''}
+        <div data-suggs>${suggHtml()}</div>
         ${F.songId ? `<div class="hint" style="margin-top:-8px">Canción de tu biblioteca. <a href="#" data-unlink>Usar como canción nueva</a></div>` : ''}
         ${field('Artista', inp('artist', F.artist, { ph: 'Intérprete original' }))}
         <label class="field"><span>Tonalidad original</span>${keyPicker('key', F.key, true)}</label>
@@ -164,7 +178,7 @@ function songForm(ss, studentId, after) {
     },
     mount: (el, sh) => {
       const grab = () => {
-        ['title', 'artist', 'startedAt', 'link', 'karaoke', 'notes'].forEach(n => { F[n] = fval(el, n); });
+        ['title', 'artist', 'startedAt', 'link', 'karaoke', 'notes'].forEach(n => { F[n] = el.querySelector(`[name="${n}"]`).value; });
         F.recordings = F.recordings.map((r, i) => ({ id: r.id || uid(), label: (el.querySelector(`[data-rl="${i}"]`) || {}).value || '', url: (el.querySelector(`[data-ru="${i}"]`) || {}).value || '', date: r.date || today() }));
       };
       el.querySelectorAll('[data-keypick]').forEach(kp => {
@@ -183,14 +197,16 @@ function songForm(ss, studentId, after) {
         sh.render();
       });
       el.querySelector('[name=manual]').onchange = e => { grab(); F.manual = e.target.checked; F.workKey = transposeKey(F.key, F.transpose) || { pc: 0, minor: F.key ? F.key.minor : false }; sh.render(); };
-      const ti = el.querySelector('[name=title]'); let t;
-      if (!F.songId) ti.oninput = () => { clearTimeout(t); t = setTimeout(() => { grab(); const p = ti.selectionStart; sh.render(); const n = el.querySelector('[name=title]'); n.focus(); n.setSelectionRange(p, p); }, 250); };
-      el.querySelectorAll('[data-sugg]').forEach(b => b.onclick = () => { grab(); const x = byId('songs', b.dataset.sugg); F.songId = x.id; F.title = x.title; F.artist = x.artist; F.key = x.key ? clone(x.key) : null; sh.render(); });
+      const ti = el.querySelector('[name=title]'), box = el.querySelector('[data-suggs]');
+      const bindSugg = () => box.querySelectorAll('[data-sugg]').forEach(b => b.onclick = () => { grab(); const x = byId('songs', b.dataset.sugg); F.songId = x.id; F.title = x.title; F.artist = x.artist; F.key = x.key ? clone(x.key) : null; sh.render(); });
+      if (!F.songId) ti.oninput = () => { F.title = ti.value; box.innerHTML = suggHtml(); bindSugg(); };
+      bindSugg();
       const ul = el.querySelector('[data-unlink]'); if (ul) ul.onclick = e => { e.preventDefault(); grab(); F.songId = null; sh.render(); };
       el.querySelector('[data-radd]').onclick = () => { grab(); F.recordings.push({ id: uid(), label: '', url: '', date: today() }); sh.render(); };
       el.querySelectorAll('[data-rrm]').forEach(b => b.onclick = () => { grab(); F.recordings.splice(+b.dataset.rrm, 1); sh.render(); });
       el.querySelector('[data-save]').onclick = () => {
         grab();
+        ['title', 'artist', 'link', 'karaoke', 'notes'].forEach(n => { F[n] = (F[n] || '').trim(); });
         if (!F.title) return ferr(el, 'title', 'Escribí el nombre de la canción');
         for (const u of [F.link, F.karaoke, ...F.recordings.map(r => r.url)]) if (u && !/^https?:\/\//i.test(u)) return toast('Los enlaces tienen que empezar con https://', 'err');
         // biblioteca compartida: la misma canción puede usarse con varios alumnos
