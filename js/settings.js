@@ -63,7 +63,8 @@ VIEWS.settings = () => {
       ${L('<span style="color:var(--bad)">Borrar todos los datos</span>', '', '', 'wipe')}
     </div>
     <input type="file" id="restoreFile" accept="application/json,.json" hidden>
-    <div class="credit">Tesitura · hecha para ${esc(st.teacher || 'Facundo Burgos')} · <a href="https://instagram.com/facuuuburgos" target="_blank" rel="noopener">@facuuuburgos</a></div>`;
+    <div class="center small dim" style="margin-top:22px">Versión <span class="num">${esc((document.querySelector('meta[name=app-version]') || {}).content || '')}</span> · <a href="#" data-act="checkUpdate">Buscar actualización</a></div>
+    <div class="credit" style="margin-top:8px">Tesitura · hecha para ${esc(st.teacher || 'Facundo Burgos')} · <a href="https://instagram.com/facuuuburgos" target="_blank" rel="noopener">@facuuuburgos</a></div>`;
 };
 AFTER.settings = m => {
   m.querySelectorAll('[data-set]').forEach(el => el.addEventListener('change', () => {
