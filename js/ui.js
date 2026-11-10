@@ -88,7 +88,9 @@ function openSheet(o) {
   renderSheet(sh);
   scrim.onclick = () => closeSheet(sh);
   scrim.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
-  requestAnimationFrame(() => { scrim.classList.add('open'); el.classList.add('open'); });
+  // fuerza el cálculo de estilos para que la hoja siempre entre deslizándose (en iPhone a veces aparecía de golpe)
+  void el.offsetHeight;
+  requestAnimationFrame(() => requestAnimationFrame(() => { scrim.classList.add('open'); el.classList.add('open'); }));
   // deslizar hacia abajo para cerrar (desde la barra superior)
   let y0 = null;
   el.addEventListener('touchstart', e => { if (e.target.closest('.sh,.grab')) y0 = e.touches[0].clientY; }, { passive: true });
@@ -155,7 +157,9 @@ function readPhoto(file) {
     img.src = url;
   });
 }
-const avatar = (st, cls = '') => `<div class="avatar ${cls}">${st && st.photo ? `<img src="${st.photo}" alt="">` : esc(initials(st))}</div>`;
+const hexA = (h, a) => /^#[0-9a-f]{6}$/i.test(h || '') ? h + Math.round(a * 255).toString(16).padStart(2, '0') : 'transparent';
+const avatarStyle = st => { if (!st || st.photo) return st && st.photo ? `border-color:${school(st.schoolId).color}` : ''; const c = school(st.schoolId).color; return `background:${hexA(c, .16)};color:${c};border-color:${hexA(c, .45)}`; };
+const avatar = (st, cls = '') => `<div class="avatar ${cls}" style="${avatarStyle(st)}">${st && st.photo ? `<img src="${st.photo}" alt="">` : esc(initials(st))}</div>`;
 const schoolDot = sc => `<span class="dot" style="background:${esc(sc.color || '#888')}"></span>`;
 
 /* ---------- navegación ---------- */
@@ -193,7 +197,9 @@ function render() {
   app.innerHTML = shell();
   const main = $('#main');
   try {
-    main.innerHTML = `<div class="view">${VIEWS[R.view](...R.params)}</div>`;
+    // la animación de entrada solo corre al cambiar de pantalla, no en cada actualización
+    const key = R.view + '/' + R.params.join('/'), anim = key !== UI._lastKey; UI._lastKey = key;
+    main.innerHTML = `<div class="view${anim ? ' enter' : ''}">${VIEWS[R.view](...R.params)}</div>`;
     if (AFTER[R.view]) AFTER[R.view](main);
   } catch (e) {
     console.error(e);

@@ -7,7 +7,7 @@ const ST_STATUS = { active: 'Activo', paused: 'Pausado', inactive: 'Inactivo' };
 // próxima clase de cada alumno, en una sola pasada
 function nextLessons() {
   const t = today(), nm = nowMin(), m = {};
-  occurrences(t, addDays(t, 60)).forEach(l => { if (l.status !== 'scheduled' || (l.date === t && toMin(l.start) < nm - 30)) return; (l.studentIds || []).forEach(id => { if (!m[id]) m[id] = l; }); });
+  occurrences(t, addDays(t, 60)).forEach(l => { if (stOf(l) !== 'scheduled' || (l.date === t && toMin(l.start) < nm - 30)) return; (l.studentIds || []).forEach(id => { if (!m[id]) m[id] = l; }); });
   return m;
 }
 function stuListHtml() {
@@ -46,17 +46,17 @@ ACT.newStudent = () => studentForm(null, { onSave: s => go('#/student/' + s.id) 
 VIEWS.student = id => {
   const s = student(id);
   if (!s) return `${topbar('Alumno', { back: '#/students' })}<div class="empty">${ic('users')}<div class="t">No se encontró el alumno</div></div>`;
-  const tab = UI.stTab[id] || 'sum';
+  const tab = ['sum', 'songs', 'lessons', 'notes'].includes(UI.stTab[id]) ? UI.stTab[id] : 'sum';
   const sc = school(s.schoolId);
   const tel = (s.phone || '').replace(/[^\d+]/g, '');
-  const tabs = [['sum', 'Resumen'], ['songs', 'Repertorio'], ['lessons', 'Clases'], ['notes', 'Notas'], ['info', 'Ficha']];
+  const tabs = [['sum', 'Resumen'], ['songs', 'Repertorio'], ['lessons', 'Clases'], ['notes', 'Notas']];
   return `${topbar('', { back: '#/students', right: `<button class="iconbtn" data-act="editStudent" data-id="${id}" aria-label="Editar">${ic('edit')}</button>` })}
     <div class="prof">${avatar(s, 'xl')}<div class="grow"><h1>${esc(sName(s))}</h1>
       <div class="row wrap small muted" style="gap:6px;margin-top:6px"><span class="pill ${s.status === 'active' ? 'st-done' : s.status === 'paused' ? 'st-absent' : 'st-sched'}">${ST_STATUS[s.status]}</span>
       ${activeSchools().length > 1 || S.schools.length > 1 ? `<span class="row" style="gap:5px">${schoolDot(sc)}${esc(sc.name)}</span>` : ''}${s.voiceType ? `<span>· ${esc(s.voiceType)}</span>` : ''}</div></div></div>
     ${tel || s.email ? `<div class="contact">${tel ? `<a href="https://wa.me/${tel.replace('+', '')}" target="_blank" rel="noopener">${ic('chat')}WhatsApp</a><a href="tel:${tel}">${ic('phone')}Llamar</a>` : ''}${s.email ? `<a href="mailto:${esc(s.email)}">${ic('mail')}Email</a>` : ''}<button data-act="newLessonFor" data-id="${id}">${ic('cal')}Agendar</button></div>` : `<div class="contact"><button data-act="newLessonFor" data-id="${id}">${ic('cal')}Agendar clase</button><button data-act="newSong" data-id="${id}">${ic('music')}Canción</button><button data-act="newNote" data-id="${id}">${ic('book')}Nota</button></div>`}
     <div class="tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="stTab" data-id="${id}" data-v="${k}">${l}</button>`).join('')}</div>
-    ${({ sum: stSummary, songs: stSongs, lessons: stLessons, notes: stNotes, info: stInfo })[tab](s)}`;
+    ${({ sum: stSummary, songs: stSongs, lessons: stLessons, notes: stNotes })[tab](s)}`;
 };
 ACT.stTab = el => { UI.stTab[el.dataset.id] = el.dataset.v; render(); };
 ACT.editStudent = el => studentForm(student(el.dataset.id));
@@ -64,7 +64,7 @@ ACT.newLessonFor = el => { const s = student(el.dataset.id); lessonForm({ studen
 
 function stSummary(s) {
   const t = today();
-  const up = occurrences(t, addDays(t, 45)).filter(l => (l.studentIds || []).includes(s.id) && l.status === 'scheduled' && (l.date > t || toMin(l.start) + l.duration > nowMin())).slice(0, 4);
+  const up = occurrences(t, addDays(t, 45)).filter(l => (l.studentIds || []).includes(s.id) && stOf(l) === 'scheduled' && (l.date > t || toMin(l.start) + l.duration > nowMin())).slice(0, 4);
   const series = S.series.filter(x => (x.studentIds || []).includes(s.id) && (!x.until || x.until >= t));
   const yr = S.lessons.filter(l => (l.studentIds || []).includes(s.id) && l.status === 'done');
   return `<div class="sec" style="margin-top:6px"><h2>Próximas clases</h2></div>
@@ -245,7 +245,7 @@ function stLessons(s) {
   return `<div class="small muted" style="margin:0 2px 14px">${done.length} realizadas · ${fmtHours(done.reduce((a, l) => a + (+l.realDur || +l.duration), 0))} de clase</div>
     <div class="timeline">${ls.map(l => {
     const n = S.lessonNotes.find(x => x.lessonId === l.id && x.studentId === s.id);
-    const st = STATUS[l.status];
+    const st = STATUS[stOf(l)];
     const songs = n ? (n.songs || []).map(id => { const ss = byId('studentSongs', id); const sg = ss && byId('songs', ss.songId); return sg ? `${sg.title} (${keyName(workKey(ss))})` : ''; }).filter(Boolean).join(', ') : '';
     const rows = n ? [['Canciones', songs], ['Ejercicios', n.exercises], ['Técnica', n.technique], ['Dificultades', n.difficulties], ['Avances', n.progress], ['Próxima', n.nextGoals], ['Notas', n.notes]].filter(r => r[1]) : [];
     return `<div class="tl ${l.status !== 'done' ? 'off' : ''}"><div class="hd"><b>${fmtDate(l.date, { dow: 1, year: l.date.slice(0, 4) !== t.slice(0, 4) })}</b><span class="small muted">${l.start} · ${fmtDur(+l.realDur || l.duration)}</span><span class="pill ${st.c}">${st.s}</span>${lessonMode(l) === 'group' ? '<span class="pill group">Grupal</span>' : ''}<button class="mini" style="margin-left:auto" data-act="openLesson" data-id="${l.id}">${n ? 'Ver' : (l.status === 'done' ? 'Registrar' : 'Ver')}</button></div>

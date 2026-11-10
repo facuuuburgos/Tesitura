@@ -2,15 +2,15 @@
 /* =========================================================
    Tesitura · clases: ficha de clase, registro, alta/edición, reposiciones
    ========================================================= */
-const OFF = ['cancel_student', 'cancel_teacher', 'rescheduled'];
+const OFF = ['cancel_student', 'cancel_teacher', 'rescheduled', 'closed'];
 function lessonRow(l, o = {}) {
-  const m = isEvent(l) ? 'event' : lessonMode(l), sc = school(l.schoolId), st = STATUS[l.status] || STATUS.scheduled;
+  const m = isEvent(l) ? 'event' : lessonMode(l), sc = school(l.schoolId), st = STATUS[stOf(l)] || STATUS.scheduled;
   const c = !isEvent(l) && o.money ? charge(l) : null;
-  return `<button class="li lesson ${m} ${OFF.includes(l.status) ? 'is-off' : ''}" data-act="openLesson" data-id="${l.id}">
+  return `<button class="li lesson ${m} ${OFF.includes(stOf(l)) ? 'is-off' : ''}" data-act="openLesson" data-id="${l.id}">
     <div class="time"><b>${l.start}</b><span>${lessonEnd(l)}</span></div><div class="bar"></div>
     <div class="bd"><div class="t ell">${esc(lessonTitle(l))}</div>
       <div class="meta">${o.date ? `<span>${fmtDate(l.date, { rel: 1, dow: 1 })}</span>·` : ''}${activeSchools().length > 1 && !isEvent(l) ? `${schoolDot(sc)}<span class="ell">${esc(sc.name)}</span>·` : ''}<span>${fmtDur(l.duration)}</span>${l.seriesId ? ic('repeat', 'sm') : ''}${l.makeupOf ? '<span>· reposición</span>' : ''}</div></div>
-    ${isEvent(l) ? '<span class="pill event">Compromiso</span>' : (l.status === 'scheduled' && !o.showSched ? (m === 'group' ? '<span class="pill group">Grupal</span>' : '') : `<span class="pill ${st.c}">${st.s}</span>`)}
+    ${isEvent(l) ? '<span class="pill event">Compromiso</span>' : (stOf(l) === 'scheduled' && !o.showSched ? (m === 'group' ? '<span class="pill group">Grupal</span>' : '') : `<span class="pill ${st.c}">${st.s}</span>`)}
     ${c && c.ok ? `<span class="pill money num">${money(c.amount, c.currency)}</span>` : ''}
   </button>`;
 }
@@ -45,6 +45,7 @@ function lessonSheet(id, o = {}) {
         ${cur.status === 'done' ? `<div class="row" style="margin-top:12px"><div class="grow small muted">Duración dictada</div>
           <div class="stepper" style="width:180px;height:40px"><button data-dur="-5">−</button><div class="val small">${fmtDur(+cur.realDur || +cur.duration)}</div><button data-dur="5">+</button></div></div>` : ''}
         <div class="infobox" style="margin-top:12px">${ic('coin', 'sm')}<div class="grow">${c.ok ? `Genera <b style="color:var(--tx)">${money(c.amount, c.currency)}</b> · ${fmtDur(c.minutes)} a ${money(c.rate, c.currency)}/h` : (cur.status === 'scheduled' ? `Si se realiza genera ${money(rateAt(sc, cur.date, m) * cur.duration / 60, sc.currency)}` : esc(c.why || 'No genera ingresos'))}</div></div>
+        ${(() => { const cl = closureOf(cur); return cl && cur.status === 'scheduled' ? `<div class="warnbox" style="margin-top:8px">${ic('school', 'sm')}<div class="grow">Día sin clases en ${esc(sc.name)}${cl.reason ? ' · ' + esc(cl.reason) : ''}. ${cl.charged ? 'Se cobra igual.' : 'No se cobra.'}</div><button class="mini" data-closure="${cl.id}">Ver</button></div>` : ''; })()}
         ${orig ? `<div class="infobox" style="margin-top:8px">${ic('shift', 'sm')}<div class="grow">Reposición de la clase del ${fmtDate(orig.date, { dow: 1 })} (${STATUS[orig.status].s.toLowerCase()})</div><button class="mini" data-open="${orig.id}">Ver</button></div>` : ''}
         ${makeups.map(x => `<div class="infobox" style="margin-top:8px">${ic('shift', 'sm')}<div class="grow">Reposición: ${fmtDate(x.date, { dow: 1 })} ${x.start} · ${STATUS[x.status].s}</div><button class="mini" data-open="${x.id}">Ver</button></div>`).join('')}
         ${['absent', 'cancel_student', 'cancel_teacher'].includes(cur.status) && !makeups.length ? `<button class="btn sm full" style="margin-top:8px" data-makeup>${ic('shift', 'sm')}Agendar reposición</button>` : ''}
@@ -71,6 +72,7 @@ function lessonSheet(id, o = {}) {
       el.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { state.tab = b.dataset.tab; sh.render(); });
       el.querySelectorAll('[data-sec]').forEach(b => b.onclick = () => { state.section = b.dataset.sec; sh.render(); });
       el.querySelectorAll('[data-open]').forEach(b => b.onclick = () => { sh.close(); setTimeout(() => lessonSheet(b.dataset.open), 200); });
+      el.querySelectorAll('[data-closure]').forEach(b => b.onclick = () => closureForm(byId('closures', b.dataset.closure)));
       const mk = el.querySelector('[data-makeup]'); if (mk) mk.onclick = () => rescheduleSheet(cur, false);
       el.querySelector('[data-edit]').onclick = () => { sh.close(); setTimeout(() => lessonForm({ occ: cur }), 200); };
       el.querySelector('[data-del]').onclick = () => deleteLesson(cur, sh);
@@ -197,10 +199,10 @@ function rescheduleSheet(l, isResched) {
 }
 // aviso suave si a esa hora ya hay otra clase (no bloquea nada)
 function overlapWarn(l) {
-  if (!l || OFF.includes(l.status)) return;
+  if (!l || OFF.includes(stOf(l))) return;
   const a = toMin(l.start), b = a + (+l.duration || 0);
   const same = x => x.id === l.id || (l.seriesId && x.seriesId === l.seriesId && x.seriesDate === (l.seriesDate || l.date)) || (l.makeupOf && x.id === l.makeupOf);
-  const o = occurrences(l.date, l.date).find(x => !same(x) && !OFF.includes(x.status) && toMin(x.start) < b && toMin(x.start) + (+x.duration || 0) > a);
+  const o = occurrences(l.date, l.date).find(x => !same(x) && !OFF.includes(stOf(x)) && toMin(x.start) < b && toMin(x.start) + (+x.duration || 0) > a);
   if (o) setTimeout(() => toast(`Ojo: a esa hora también tenés ${lessonTitle(o)} (${o.start})`), 2700);
 }
 
@@ -307,11 +309,11 @@ function lessonForm(o = {}) {
             // ¿ya existe esa clase en el calendario? (mismo día, algún alumno en común, horario que se cruza)
             if (F.kind === 'lesson') {
               const a = toMin(F.start), b = a + F.duration;
-              const dup = occurrences(F.date, F.date).find(x => !isEvent(x) && !OFF.includes(x.status) && (x.studentIds || []).some(i => F.studentIds.includes(i)) && toMin(x.start) < b + 30 && toMin(x.start) + (+x.duration || 0) > a - 30);
+              const dup = occurrences(F.date, F.date).find(x => !isEvent(x) && !OFF.includes(stOf(x)) && (x.studentIds || []).some(i => F.studentIds.includes(i)) && toMin(x.start) < b + 30 && toMin(x.start) + (+x.duration || 0) > a - 30);
               if (dup) {
                 const already = dup.status === 'done';
                 const v = await ask(already ? 'Esa clase ya está registrada' : 'Esa clase ya está en el calendario',
-                  `${esc(lessonTitle(dup))} · ${fmtDate(dup.date, { dow: 1 })} ${dup.start}–${lessonEnd(dup)} (${STATUS[dup.status].s.toLowerCase()}).`,
+                  `${esc(lessonTitle(dup))} · ${fmtDate(dup.date, { dow: 1 })} ${dup.start}–${lessonEnd(dup)} (${STATUS[stOf(dup)].s.toLowerCase()}).`,
                   [...(already ? [] : [{ label: F.markDone ? 'Marcar esa como realizada' : 'Abrir la del calendario', val: 'use' }]), { label: 'Es otra clase: crearla igual', val: 'new', cls: 'ghost' }, { label: 'Cancelar', val: null, cls: 'ghost' }]);
                 if (!v) return;
                 if (v === 'use') {
@@ -373,7 +375,7 @@ function lessonForm(o = {}) {
 /* ---------- registrar una clase rápido (desde el inicio) ---------- */
 function quickRegister() {
   const t = today();
-  const list = occurrences(addDays(t, -7), t).filter(l => !isEvent(l) && l.status === 'scheduled' && (l.date < t || toMin(l.start) <= nowMin() + 30)).reverse();
+  const list = occurrences(addDays(t, -7), t).filter(l => !isEvent(l) && stOf(l) === 'scheduled' && (l.date < t || toMin(l.start) <= nowMin() + 30)).reverse();
   if (!list.length) { lessonForm({ markDone: true }); return; }
   openSheet({
     title: 'Registrar clase',

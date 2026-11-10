@@ -151,6 +151,11 @@ VIEWS.school = id => {
     </div>
     <div class="hint" style="margin-top:8px">Las clases <b>reprogramadas</b> nunca se cuentan: se cobra la reposición cuando efectivamente se realiza. Estas reglas definen tanto la factura como tus ingresos en estadísticas.</div>
 
+    <div class="group-t">Días sin clases</div>
+    <div class="list">${S.closures.filter(c => c.schoolId === sc.id).sort((a, b) => b.from.localeCompare(a.from)).slice(0, 12).map(c => `<button class="li tap" data-act="editClosure" data-id="${c.id}"><div class="grow"><div class="t">${closureTxt(c)}</div><div class="s">${c.reason ? esc(c.reason) + ' · ' : ''}${c.charged ? 'Se cobra' : 'No se cobra'}</div></div>${ic('chevR', 'sm chev')}</button>`).join('')}
+      <button class="li tap" data-act="newClosure" data-school="${sc.id}"><div class="grow t" style="color:var(--acc)">Marcar día sin clases</div>${ic('plus', 'sm')}</button></div>
+    <div class="hint" style="margin-top:8px">Las clases de esos días quedan como “sin clases” y vos elegís si se cobran o no.</div>
+
     <div class="group-t">Facturas</div>
     <div class="card">
       ${field('A nombre de', `<input class="inp" data-f="billTo" value="${esc(sc.billTo)}" placeholder="Ej: tu jefe o la escuela">`)}
@@ -213,6 +218,40 @@ ACT.editRate = el => {
   });
 };
 
+/* ---------- días sin clases ---------- */
+function closureForm(c, o = {}) {
+  const F = c ? clone(c) : { schoolId: o.schoolId || (activeSchools().length === 1 ? activeSchools()[0].id : (activeSchools()[0] || {}).id), from: o.date || today(), to: '', reason: '', charged: false };
+  const affected = () => occurrences(F.from, F.to && F.to >= F.from ? F.to : F.from).filter(l => !isEvent(l) && l.schoolId === F.schoolId && l.status === 'scheduled');
+  openSheet({
+    title: c ? 'Día sin clases' : 'Marcar día sin clases',
+    body: () => { const n = affected().length; return `<div class="muted small" style="margin:-4px 0 14px">Feriados, vacaciones, eventos de la escuela… Las clases de ese día quedan marcadas como “sin clases” y no hace falta cancelarlas una por una.</div>
+      ${activeSchools().length > 1 ? field('Escuela', sel('schoolId', F.schoolId, activeSchools().map(s => [s.id, s.name]))) : ''}
+      <div class="grid2">${field('Día', inp('from', F.from, { type: 'date' }))}${field('Hasta (opcional)', inp('to', F.to, { type: 'date' }))}</div>
+      ${field('Motivo (opcional)', inp('reason', F.reason, { ph: 'Ej: feriado, vacaciones de invierno' }))}
+      <div class="list" style="margin-bottom:12px">${sw('charged', F.charged, 'Se cobran las clases de ese día', 'Si está apagado, no generan ingresos ni van en la factura')}</div>
+      <div class="infobox" style="margin-bottom:14px">${ic('cal', 'sm')}<div class="grow" data-aff>${n ? `Afecta ${n} clase${n > 1 ? 's' : ''} agendada${n > 1 ? 's' : ''}.` : 'No hay clases agendadas en esa fecha.'}</div></div>
+      <button class="btn pri full" data-save>${ic('check', 'sm')}Guardar</button>
+      ${c ? `<button class="btn ghost danger full" style="margin-top:6px" data-del>${ic('trash', 'sm')}Quitar (vuelve a haber clases)</button>` : ''}`; },
+    mount: (el, sh) => {
+      const grab = () => { ['from', 'to', 'reason'].forEach(n => { F[n] = fval(el, n); }); const s = fval(el, 'schoolId'); if (s !== undefined) F.schoolId = s; F.charged = fval(el, 'charged'); };
+      el.querySelectorAll('[name=from],[name=to],[name=schoolId]').forEach(i => i.addEventListener('change', () => { grab(); const n = affected().length; el.querySelector('[data-aff]').textContent = n ? `Afecta ${n} clase${n > 1 ? 's' : ''} agendada${n > 1 ? 's' : ''}.` : 'No hay clases agendadas en esa fecha.'; }));
+      el.querySelector('[data-save]').onclick = () => {
+        grab();
+        if (!F.from) return ferr(el, 'from', 'Elegí el día');
+        if (F.to && F.to < F.from) return ferr(el, 'to', 'La fecha final es anterior a la inicial');
+        if (F.to === F.from) F.to = '';
+        upsert('closures', Object.assign(c || { id: uid() }, F));
+        save(); closeAll(); render(); toast('Día sin clases guardado · ' + (F.charged ? 'se cobra' : 'no se cobra'));
+      };
+      const d = el.querySelector('[data-del]');
+      if (d) d.onclick = async () => { if (!(await confirmDel('¿Quitar este día sin clases?', 'Las clases de ese día vuelven a quedar como programadas.', 'Quitar'))) return; removeRec('closures', c.id); save(); closeAll(); render(); };
+    }
+  });
+}
+const closureTxt = c => fmtDate(c.from, { dow: 1 }) + (c.to ? ' – ' + fmtDate(c.to, { dow: 1 }) : '');
+ACT.newClosure = el => closureForm(null, { schoolId: el.dataset.school, date: el.dataset.date });
+ACT.editClosure = el => closureForm(byId('closures', el.dataset.id));
+
 /* ---------- cuenta ---------- */
 ACT.login = () => openSheet({
   title: 'Tu cuenta',
@@ -270,7 +309,7 @@ ACT.exportAllXls = async () => {
 };
 // archivo de calendario (.ics) con alarma, para el Calendario del iPhone
 ACT.exportIcs = () => {
-  const t = today(), ls = occurrences(t, addDays(t, 84)).filter(l => l.status === 'scheduled');
+  const t = today(), ls = occurrences(t, addDays(t, 84)).filter(l => stOf(l) === 'scheduled');
   if (!ls.length) return toast('No hay clases agendadas', 'err');
   const dt = (d, m) => d.replace(/-/g, '') + 'T' + fromMin(m).replace(':', '') + '00';
   const icsEsc = s => String(s || '').replace(/[\\,;]/g, c => '\\' + c).replace(/\n/g, '\\n');
@@ -289,7 +328,7 @@ function checkReminders() {
   const t = today(), nm = nowMin(), ahead = +S.settings.remindMin || 15;
   occurrences(t, t).forEach(l => {
     const diff = toMin(l.start) - nm;
-    if (l.status !== 'scheduled' || diff < 0 || diff > ahead || notified.has(l.id + t)) return;
+    if (stOf(l) !== 'scheduled' || diff < 0 || diff > ahead || notified.has(l.id + t)) return;
     notified.add(l.id + t);
     const msg = `${lessonTitle(l)} a las ${l.start}`;
     if ('Notification' in window && Notification.permission === 'granted' && navigator.serviceWorker) {

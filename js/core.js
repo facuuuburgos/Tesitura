@@ -3,7 +3,7 @@
    Tesitura · núcleo: datos, fechas, música, cobros, sincronización
    ========================================================= */
 const KEY = 'tesitura.data', AKEY = 'tesitura.auth';
-const COLLS = ['schools', 'students', 'songs', 'studentSongs', 'series', 'lessons', 'lessonNotes', 'vocalNotes', 'invoices'];
+const COLLS = ['closures', 'schools', 'students', 'songs', 'studentSongs', 'series', 'lessons', 'lessonNotes', 'vocalNotes', 'invoices'];
 
 /* ---------- utilidades ---------- */
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -123,7 +123,7 @@ function blank() {
       hours: [], // horarios habituales [{d:2,start:'16:00',end:'20:00'}]
     },
     schools: [defaultSchool()],
-    students: [], songs: [], studentSongs: [], series: [], lessons: [], lessonNotes: [], vocalNotes: [], invoices: []
+    closures: [], students: [], songs: [], studentSongs: [], series: [], lessons: [], lessonNotes: [], vocalNotes: [], invoices: []
   };
 }
 function defaultSchool() {
@@ -227,7 +227,15 @@ const STATUS = {
   cancel_student: { l: 'Cancelada por el alumno', s: 'Canceló alumno', c: 'st-cancel' },
   cancel_teacher: { l: 'Cancelada por mí', s: 'Cancelé yo', c: 'st-cancel' },
   rescheduled: { l: 'Reprogramada', s: 'Reprogramada', c: 'st-resched' },
+  closed: { l: 'Sin clases en la escuela', s: 'Sin clases', c: 'st-cancel' },
 };
+// días sin clases de una escuela (feriados, vacaciones, eventos de la escuela)
+function closureOf(l) {
+  if (!l || l.kind === 'event' || !S.closures.length) return null;
+  return S.closures.find(c => c.schoolId === l.schoolId && l.date >= c.from && l.date <= (c.to || c.from)) || null;
+}
+// estado efectivo: una clase programada en un día sin clases figura como "sin clases"
+const stOf = l => l.status === 'scheduled' && closureOf(l) ? 'closed' : l.status;
 const lessonMode = l => l.mode || ((l.studentIds || []).length > 1 ? 'group' : 'ind');
 const lessonEnd = l => fromMin(toMin(l.start) + (+l.duration || 0));
 const isEvent = l => l.kind === 'event';
@@ -307,7 +315,13 @@ function charge(l, depth = 0) {
     case 'cancel_student': res.ok = !!R.cancelStudent; res.concept = 'Cancelada por el alumno (se cobra)'; res.why = res.ok ? '' : 'Cancelaciones del alumno no se cobran en ' + sc.name; break;
     case 'cancel_teacher': res.ok = !!R.cancelTeacher; res.concept = 'Cancelada por el profesor (se cobra)'; res.why = res.ok ? '' : 'Cancelaciones tuyas no se cobran en ' + sc.name; break;
     case 'rescheduled': res.why = 'Reprogramada: se cuenta la reposición, no esta'; break;
-    default: res.why = 'Todavía no se realizó';
+    default: {
+      const cl = closureOf(l);
+      if (cl) {
+        if (cl.charged && l.date <= today()) { res.ok = true; res.concept = 'Día sin clases (se cobra)'; }
+        else res.why = cl.charged ? 'Día sin clases: se cobrará ese día' : 'Día sin clases en ' + sc.name + (cl.reason ? ' (' + cl.reason + ')' : '') + ': no se cobra';
+      } else res.why = 'Todavía no se realizó';
+    }
   }
   // una reposición de una clase que ya se cobró no se cobra dos veces (salvo que la escuela lo indique)
   if (res.ok && l.makeupOf && !R.makeupDouble && depth < 5) {
@@ -331,13 +345,13 @@ function setStatus(o, status, extra = {}) {
 // clases del pasado que siguen sin confirmar
 function pendingConfirm(days = 45) {
   const t = today(), nm = nowMin();
-  return occurrences(addDays(t, -days), t).filter(l => !isEvent(l) && l.status === 'scheduled' && (l.date < t || toMin(l.start) + (+l.duration || 0) <= nm));
+  return occurrences(addDays(t, -days), t).filter(l => !isEvent(l) && stOf(l) === 'scheduled' && (l.date < t || toMin(l.start) + (+l.duration || 0) <= nm));
 }
 
 /* ---------- resúmenes para estadísticas ---------- */
 function summarize(a, b, schoolId) {
   const ls = occurrences(a, b).filter(l => !isEvent(l) && (!schoolId || l.schoolId === schoolId));
-  const r = { lessons: ls, done: 0, minutes: 0, minInd: 0, minGrp: 0, income: {}, incInd: {}, incGrp: {}, incOther: {}, chargedNotDone: 0, byStudent: {}, cancelled: 0, absent: 0, scheduled: 0 };
+  const r = { lessons: ls, done: 0, minutes: 0, minInd: 0, minGrp: 0, income: {}, incInd: {}, incGrp: {}, incOther: {}, chargedNotDone: 0, byStudent: {}, cancelled: 0, absent: 0, scheduled: 0, closed: 0 };
   for (const l of ls) {
     const c = charge(l);
     if (l.status === 'done') {
@@ -347,7 +361,8 @@ function summarize(a, b, schoolId) {
     }
     if (l.status === 'absent') r.absent++;
     if (l.status === 'cancel_student' || l.status === 'cancel_teacher') r.cancelled++;
-    if (l.status === 'scheduled') r.scheduled++;
+    if (stOf(l) === 'scheduled') r.scheduled++;
+    if (stOf(l) === 'closed') r.closed++;
     if (c.ok) {
       addMoney(r.income, c.currency, c.amount);
       if (l.status !== 'done') { addMoney(r.incOther, c.currency, c.amount); r.chargedNotDone++; }
@@ -361,7 +376,8 @@ function summarize(a, b, schoolId) {
 function projection(endDate, schoolId) {
   const t = today(), nm = nowMin(), acc = {};
   occurrences(t, endDate).forEach(l => {
-    if (isEvent(l) || l.status !== 'scheduled' || (schoolId && l.schoolId !== schoolId)) return;
+    const es = stOf(l);
+    if (isEvent(l) || (es !== 'scheduled' && !(es === 'closed' && closureOf(l).charged)) || (schoolId && l.schoolId !== schoolId)) return;
     if (l.date === t && toMin(l.start) + (+l.duration || 0) <= nm) return;
     const sc = school(l.schoolId);
     addMoney(acc, sc.currency, rateAt(sc, l.date, lessonMode(l)) * (+l.duration || 0) / 60);
@@ -379,7 +395,7 @@ function studentContext(sid, beforeDate) {
 }
 function nextLessonOf(sid) {
   const t = today(), nm = nowMin();
-  return occurrences(t, addDays(t, 60)).find(l => (l.studentIds || []).includes(sid) && l.status === 'scheduled' && (l.date > t || toMin(l.start) >= nm - 30)) || null;
+  return occurrences(t, addDays(t, 60)).find(l => (l.studentIds || []).includes(sid) && stOf(l) === 'scheduled' && (l.date > t || toMin(l.start) >= nm - 30)) || null;
 }
 
 /* =========================================================

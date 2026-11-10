@@ -8,11 +8,11 @@ const LIVE_OFF = [...OFF, 'absent'];
 // clases que están sucediendo ahora mismo (según el calendario y la hora local)
 function liveLessons() {
   const t = today(), ns = nowSecs();
-  return occurrences(t, t).filter(l => !isEvent(l) && !LIVE_OFF.includes(l.status) && toMin(l.start) * 60 <= ns && ns < (toMin(l.start) + (+l.duration || 0)) * 60);
+  return occurrences(t, t).filter(l => !isEvent(l) && !LIVE_OFF.includes(stOf(l)) && toMin(l.start) * 60 <= ns && ns < (toMin(l.start) + (+l.duration || 0)) * 60);
 }
 function nextToday() {
   const t = today(), ns = nowSecs();
-  return occurrences(t, t).find(l => !LIVE_OFF.includes(l.status) && l.status !== 'done' && toMin(l.start) * 60 > ns) || null;
+  return occurrences(t, t).find(l => !LIVE_OFF.includes(stOf(l)) && l.status !== 'done' && toMin(l.start) * 60 > ns) || null;
 }
 const fmtLeft = m => m < 1 ? 'menos de 1 min' : fmtDur(m);
 function liveInfo(l) {
@@ -46,7 +46,7 @@ function nowSection() {
         <div class="countdown"><span class="xs muted">empieza en</span><b class="num" data-cd>${fmtLeft(mins)}</b></div>
       </div>`;
   } else if (!live.length) {
-    const t = today(), tom = occurrences(addDays(t, 1), addDays(t, 7)).find(l => !LIVE_OFF.includes(l.status));
+    const t = today(), tom = occurrences(addDays(t, 1), addDays(t, 7)).find(l => !LIVE_OFF.includes(stOf(l)));
     const hadToday = occurrences(t, t).some(l => !isEvent(l));
     h += `<div class="card row small muted" style="margin-top:6px">${ic(hadToday ? 'check' : 'cal', 'sm')}<span class="grow">${hadToday ? 'No quedan clases por hoy.' : 'Hoy no tenés clases.'}${tom ? ` Próxima: ${fmtDate(tom.date, { rel: 1, dow: 1 })} a las ${tom.start} · ${esc(lessonTitle(tom))}` : ''}</span></div>`;
   }
@@ -74,7 +74,7 @@ VIEWS.home = () => {
   const proj = projection(me);
   const pend = pendingConfirm();
   const todays = occurrences(t, t);
-  const up = occurrences(addDays(t, 1), addDays(t, 21)).filter(l => l.status === 'scheduled' && !isEvent(l)).slice(0, 6);
+  const up = occurrences(addDays(t, 1), addDays(t, 21)).filter(l => stOf(l) === 'scheduled' && !isEvent(l)).slice(0, 6);
   const evs = occurrences(t, addDays(t, 60)).filter(l => isEvent(l) && (l.date > t || toMin(l.start) >= nowMin())).slice(0, 4);
   const active = S.students.filter(s => s.status === 'active').length;
   const h = new Date().getHours();
@@ -137,15 +137,22 @@ VIEWS.calendar = () => {
   return `${topbar('Calendario', { right: `<button class="iconbtn acc" data-act="newLesson" aria-label="Nueva clase">${ic('plus')}</button>` })}
     <div class="calbar"><div class="seg">${[['day', 'Día'], ['week', 'Semana'], ['month', 'Mes']].map(([k, l]) => `<button class="${v === k ? 'on' : ''}" data-act="calView" data-v="${k}">${l}</button>`).join('')}</div></div>
     <div class="calnav"><button class="iconbtn" data-act="calNav" data-n="-1" aria-label="Anterior">${ic('chevL', 'sm')}</button><div class="ttl center">${ttl}</div><button class="iconbtn" data-act="calNav" data-n="1" aria-label="Siguiente">${ic('chevR', 'sm')}</button>${d !== today() ? `<button class="btn sm" data-act="calNow">Hoy</button>` : ''}</div>
+    ${v === 'day' ? `<div style="margin:-2px 0 12px">${dayBanner(d)}</div>` : ''}
     <div id="calbody">${v === 'month' ? monthGrid(d) : timeGrid(v === 'day' ? [d] : [...Array(7)].map((_, i) => addDays(weekStart(d), i)))}</div>
     <div class="legend"><span><i class="dot" style="background:var(--acc)"></i>Individual</span><span><i class="dot" style="background:var(--grp)"></i>Grupal</span><span><i class="dot" style="background:var(--ev)"></i>Compromiso</span><span>✓ Realizada</span><span style="text-decoration:line-through">Cancelada</span></div>
     ${v === 'day' ? dayList(d) : ''}`;
 };
+function dayBanner(d) {
+  const cls = S.closures.filter(c => d >= c.from && d <= (c.to || c.from));
+  const banner = cls.map(c => `<button class="warnbox" style="width:100%;text-align:left;margin-top:8px" data-act="editClosure" data-id="${c.id}">${ic('school', 'sm')}<div class="grow">Sin clases en ${esc(school(c.schoolId).name)}${c.reason ? ' · ' + esc(c.reason) : ''} · ${c.charged ? 'se cobra' : 'no se cobra'}</div>${ic('chevR', 'sm')}</button>`).join('')
+    + (activeSchools().some(s => !cls.some(c => c.schoolId === s.id)) ? `<button class="btn sm ghost full" style="margin-top:8px;border:1px dashed var(--line2)" data-act="newClosure" data-date="${d}">${ic('school', 'sm')}Marcar día sin clases</button>` : '');
+  return banner;
+}
 function dayList(d) {
   const ls = occurrences(d, d);
   if (!ls.length) return '';
   const s = summarize(d, d);
-  return `<div class="sec"><h2>Resumen del día</h2><span class="small muted">${ls.filter(l => !isEvent(l)).length} clases · ${fmtHours(ls.filter(l => !isEvent(l) && !OFF.includes(l.status)).reduce((a, l) => a + (+l.duration), 0))}${s.done ? ' · ' + fmtMoneyMap(s.income) : ''}</span></div><div class="list">${ls.map(l => lessonRow(l, { money: 1, showSched: true })).join('')}</div>`;
+  return `<div class="sec"><h2>Resumen del día</h2><span class="small muted">${ls.filter(l => !isEvent(l)).length} clases · ${fmtHours(ls.filter(l => !isEvent(l) && !OFF.includes(stOf(l))).reduce((a, l) => a + (+l.duration), 0))}${s.done ? ' · ' + fmtMoneyMap(s.income) : ''}</span></div><div class="list">${ls.map(l => lessonRow(l, { money: 1, showSched: true })).join('')}</div>`;
 }
 ACT.calView = el => { UI.calView = el.dataset.v; render(); };
 ACT.calNav = el => {
@@ -192,11 +199,11 @@ function timeGrid(days) {
     const ls = lanes(all.filter(l => l.date === d));
     const habit = (S.settings.hours || []).filter(h => +h.d === dow(d)).map(h => `<div class="habit" style="top:${(toMin(h.start) - a) * px + 4}px;height:${(toMin(h.end) - toMin(h.start)) * px}px"></div>`).join('');
     const nm = nowMin();
-    return `<div class="col ${d === t ? 'today' : ''}" data-col="${d}">${habit}${hours.map(m => `<div class="hl" style="top:${(m - a) * px + 4}px"></div>`).join('')}
+    return `<div class="col ${d === t ? 'today' : ''} ${S.closures.some(c => d >= c.from && d <= (c.to || c.from)) ? 'closedday' : ''}" data-col="${d}">${habit}${hours.map(m => `<div class="hl" style="top:${(m - a) * px + 4}px"></div>`).join('')}
         ${d === t && nm >= a && nm <= b ? `<div class="nowl" style="top:${(nm - a) * px + 4}px"></div>` : ''}
         ${ls.map(({ l, a: s, b: e, lane, n }) => {
       const m = isEvent(l) ? 'event' : lessonMode(l), w = 100 / n;
-      const cls = [m, OFF.includes(l.status) ? 'off' : '', l.status === 'done' ? 'done' : '', l.status === 'absent' ? 'absent off' : ''].join(' ');
+      const cls = [m, OFF.includes(stOf(l)) ? 'off' : '', l.status === 'done' ? 'done' : '', l.status === 'absent' ? 'absent off' : ''].join(' ');
       const hgt = Math.max((+l.duration || 0) * px - 2, 20);
       return `<button class="ev ${cls}" data-act="openLesson" data-id="${l.id}" style="top:${(s - a) * px + 5}px;height:${hgt}px;left:calc(${lane * w}% + 2px);width:calc(${w}% - 4px);right:auto">
             <b>${esc(week ? weekLabel(l) : lessonTitle(l))}</b>${hgt > 34 ? `<span>${l.start}${week ? '' : '–' + lessonEnd(l)}</span>` : ''}${!week && hgt > 50 && l.notes ? `<span style="display:block" class="ell">${esc(l.notes)}</span>` : ''}</button>`;
@@ -213,8 +220,9 @@ function monthGrid(d) {
   return `<div class="mgrid">${[...Array(7)].map((_, i) => `<div class="dh">${DOW_S[(i + ws) % 7]}</div>`).join('')}
     ${cells.map(x => {
     const ls = all.filter(l => l.date === x);
-    return `<button class="md ${x.slice(0, 7) !== ms.slice(0, 7) ? 'out' : ''} ${x === t ? 'today' : ''}" data-act="calDay" data-d="${x}"><span class="n">${parseD(x).getDate()}</span>
-        ${ls.slice(0, 3).map(l => `<span class="e ${isEvent(l) ? 'event' : lessonMode(l)} ${OFF.includes(l.status) || l.status === 'absent' ? 'off' : ''}">${l.status === 'done' ? '✓' : ''}${esc(lessonTitle(l).split(' ')[0])}</span>`).join('')}
+    const shut = S.closures.some(c => x >= c.from && x <= (c.to || c.from));
+    return `<button class="md ${x.slice(0, 7) !== ms.slice(0, 7) ? 'out' : ''} ${x === t ? 'today' : ''} ${shut ? 'closedday' : ''}" data-act="calDay" data-d="${x}"><span class="n">${parseD(x).getDate()}</span>${shut ? '<span class="xs dim" style="font-size:9.5px">Sin clases</span>' : ''}
+        ${ls.slice(0, 3).map(l => `<span class="e ${isEvent(l) ? 'event' : lessonMode(l)} ${OFF.includes(stOf(l)) || l.status === 'absent' ? 'off' : ''}">${l.status === 'done' ? '✓' : ''}${esc(lessonTitle(l).split(' ')[0])}</span>`).join('')}
         ${ls.length > 3 ? `<span class="more">+${ls.length - 3}</span>` : ''}</button>`;
   }).join('')}</div>
   ${(() => { const s = summarize(ms, me); return `<div class="small muted" style="margin:10px 4px 0">En ${MON_L[parseD(d).getMonth()]}: ${s.done} realizadas · ${fmtHours(s.minutes)} · ${fmtMoneyMap(s.income)}${s.scheduled ? ` · ${s.scheduled} programadas` : ''}</div>`; })()}`;

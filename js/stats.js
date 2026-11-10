@@ -94,13 +94,13 @@ const T = {
   es: { inv: 'FACTURA', no: 'N°', date: 'Fecha', from: 'De', to: 'Para', period: 'Período', d: 'Fecha', st: 'Alumno', c: 'Concepto', dur: 'Duración', rate: 'Tarifa/h', amt: 'Importe', tot: 'TOTAL', hours: 'Horas', lessons: 'Clases', thanks: 'Gracias.' },
   en: { inv: 'INVOICE', no: 'No.', date: 'Date', from: 'From', to: 'Bill to', period: 'Period', d: 'Date', st: 'Student', c: 'Description', dur: 'Duration', rate: 'Rate/h', amt: 'Amount', tot: 'TOTAL', hours: 'Hours', lessons: 'Lessons', thanks: 'Thank you.' }
 };
-const CONCEPT_EN = { 'Clase individual': 'Private lesson', 'Clase grupal': 'Group lesson', 'Clase individual (reposición)': 'Private lesson (make-up)', 'Clase grupal (reposición)': 'Group lesson (make-up)', 'Ausencia (se cobra)': 'No-show (billable)', 'Cancelada por el alumno (se cobra)': 'Late cancellation (billable)', 'Cancelada por el profesor (se cobra)': 'Cancelled by teacher (billable)' };
+const CONCEPT_EN = { 'Clase individual': 'Private lesson', 'Clase grupal': 'Group lesson', 'Clase individual (reposición)': 'Private lesson (make-up)', 'Clase grupal (reposición)': 'Group lesson (make-up)', 'Ausencia (se cobra)': 'No-show (billable)', 'Cancelada por el alumno (se cobra)': 'Late cancellation (billable)', 'Cancelada por el profesor (se cobra)': 'Cancelled by teacher (billable)', 'Día sin clases (se cobra)': 'No classes that day (billable)' };
 const invNumber = (sc, n) => (sc.prefix || '') + String(n).padStart(4, '0');
 function invoiceData(sc, a, b) {
   const ls = occurrences(a, b).filter(l => !isEvent(l) && l.schoolId === sc.id);
   const inc = [], exc = [];
   ls.forEach(l => { const c = charge(l); (c.ok ? inc : exc).push({ l, c }); });
-  return { inc, exc, unconfirmed: ls.filter(l => l.status === 'scheduled' && (l.date < today() || (l.date === today() && toMin(l.start) + l.duration <= nowMin()))), total: inc.reduce((x, y) => x + y.c.amount, 0), minutes: inc.reduce((x, y) => x + y.c.minutes, 0) };
+  return { inc, exc, unconfirmed: ls.filter(l => stOf(l) === 'scheduled' && (l.date < today() || (l.date === today() && toMin(l.start) + l.duration <= nowMin()))), total: inc.reduce((x, y) => x + y.c.amount, 0), minutes: inc.reduce((x, y) => x + y.c.minutes, 0) };
 }
 VIEWS.invoices = () => {
   const schools = activeSchools();
@@ -121,7 +121,7 @@ VIEWS.invoices = () => {
     <div class="sec"><h2>Se facturan</h2><span class="small muted">${D.inc.length} · ${fmtHours(D.minutes)}</span></div>
     ${D.inc.length ? `<div class="list">${D.inc.map(({ l, c }) => `<button class="inv-line" style="width:100%;text-align:left" data-act="openLesson" data-id="${l.id}"><span class="ell"><b style="font-weight:550">${fmtDate(l.date, { dow: 1 })}</b> · ${esc(lessonTitle(l))}</span><span class="num" style="font-weight:600">${money(c.amount, c.currency)}</span><span class="small muted">${esc(c.concept)} · ${fmtDur(c.minutes)} × ${money(c.rate, c.currency)}/h</span><span></span></button>`).join('')}
       <div class="inv-tot"><span>Total</span><span class="num">${money(D.total, sc.currency)}</span></div></div>` : `<div class="card small muted">No hay clases facturables en este período.</div>`}
-    ${D.exc.length ? `<details style="margin-top:12px"><summary class="small muted" style="cursor:pointer;padding:6px 2px">No se facturan (${D.exc.length})</summary><div class="list" style="margin-top:8px">${D.exc.map(({ l, c }) => `<button class="inv-line off" style="width:100%;text-align:left" data-act="openLesson" data-id="${l.id}"><span class="ell">${fmtDate(l.date, { dow: 1 })} · ${esc(lessonTitle(l))}</span><span class="pill ${STATUS[l.status].c}">${STATUS[l.status].s}</span><span class="small muted">${esc(c.why)}</span><span></span></button>`).join('')}</div></details>` : ''}
+    ${D.exc.length ? `<details style="margin-top:12px"><summary class="small muted" style="cursor:pointer;padding:6px 2px">No se facturan (${D.exc.length})</summary><div class="list" style="margin-top:8px">${D.exc.map(({ l, c }) => `<button class="inv-line off" style="width:100%;text-align:left" data-act="openLesson" data-id="${l.id}"><span class="ell">${fmtDate(l.date, { dow: 1 })} · ${esc(lessonTitle(l))}</span><span class="pill ${STATUS[stOf(l)].c}">${STATUS[stOf(l)].s}</span><span class="small muted">${esc(c.why)}</span><span></span></button>`).join('')}</div></details>` : ''}
     <div class="sp"></div>
     ${existing.length ? `<div class="infobox">${ic('file', 'sm')}<div class="grow">Ya generaste la factura ${existing.map(i => 'N° ' + esc(i.number)).join(', ')} para este mes${Math.abs(existing[0].total - D.total) > .005 ? ` por ${money(existing[0].total, existing[0].currency)}. <b style="color:var(--warn)">Los datos cambiaron desde entonces.</b>` : '.'}</div></div>
       <div class="btns"><button class="btn" data-act="dlInvoice" data-id="${existing[0].id}">${ic('download', 'sm')}Descargar</button><button class="btn" data-act="regenInvoice" data-id="${existing[0].id}">${ic('repeat', 'sm')}Actualizar</button></div>`
@@ -273,9 +273,9 @@ ACT.exportMenu = async () => {
   if (v === 'pdf') ACT.exportPdf(); else if (v === 'xls') ACT.exportXls();
 };
 function lessonRows(a, b, sid) {
-  return occurrences(a, b).filter(l => !isEvent(l) && (!sid || l.schoolId === sid) && l.status !== 'scheduled').map(l => {
+  return occurrences(a, b).filter(l => !isEvent(l) && (!sid || l.schoolId === sid) && stOf(l) !== 'scheduled').map(l => {
     const c = charge(l), sc = school(l.schoolId);
-    return { Fecha: l.date, Inicio: l.start, Alumnos: (l.studentIds || []).map(i => sName(student(i))).join(', '), Escuela: sc.name, Modalidad: lessonMode(l) === 'group' ? 'Grupal' : 'Individual', Estado: STATUS[l.status].l, Minutos: c.minutes, 'Tarifa/h': c.rate, Importe: c.amount, Moneda: c.currency, Facturable: c.ok ? 'Sí' : 'No', Motivo: c.ok ? '' : c.why };
+    return { Fecha: l.date, Inicio: l.start, Alumnos: (l.studentIds || []).map(i => sName(student(i))).join(', '), Escuela: sc.name, Modalidad: lessonMode(l) === 'group' ? 'Grupal' : 'Individual', Estado: STATUS[stOf(l)].l, Minutos: c.minutes, 'Tarifa/h': c.rate, Importe: c.amount, Moneda: c.currency, Facturable: c.ok ? 'Sí' : 'No', Motivo: c.ok ? '' : c.why };
   });
 }
 ACT.exportXls = async () => {
