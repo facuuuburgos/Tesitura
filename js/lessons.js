@@ -126,14 +126,14 @@ function contextHtml(sid, l, o = {}) {
   </div>`;
 }
 function songRowMini(ss) {
-  const sg = byId('songs', ss.songId) || {}, wk = workKey(ss);
-  return `<div class="li" style="min-height:48px;padding:8px 12px"><div class="keytag" style="min-width:42px;height:40px;font-size:15px">${keyName(wk)}</div><div class="grow"><div class="t ell">${esc(sg.title || '¿?')}</div><div class="s ell">${esc(sg.artist || '')}${sg.key ? ` · orig. ${keyName(sg.key)} (${fmtSemis(ss.manual && ss.workKey ? semisBetween(sg.key.pc, ss.workKey.pc) : (ss.transpose || 0))})` : ''}</div></div>${ss.link ? `<a class="mini" href="${esc(ss.link)}" target="_blank" rel="noopener">${ic('play', 'sm')}</a>` : ''}${ss.karaoke ? `<a class="mini" href="${esc(ss.karaoke)}" target="_blank" rel="noopener">${ic('mic', 'sm')}</a>` : ''}</div>`;
+  const sg = byId('songs', ss.songId) || {}, t = semisOf(ss);
+  return `<div class="li" style="min-height:48px;padding:8px 12px">${semisTag(t, true)}<div class="grow"><div class="t ell">${esc(sg.title || '¿?')}</div><div class="s ell">${esc(sg.artist || '')}${sg.artist ? ' · ' : ''}${semisTxt(t)}</div></div>${ss.link ? `<a class="mini" href="${esc(ss.link)}" target="_blank" rel="noopener">${ic('play', 'sm')}</a>` : ''}${ss.karaoke ? `<a class="mini" href="${esc(ss.karaoke)}" target="_blank" rel="noopener">${ic('mic', 'sm')}</a>` : ''}</div>`;
 }
 function logForm(sid, l) {
   const ex = S.lessonNotes.find(n => n.lessonId === l.id && n.studentId === sid) || {};
   const songs = S.studentSongs.filter(x => x.studentId === sid && (!x.endedAt || (ex.songs || []).includes(x.id)));
   return `<form class="logf">
-    ${songs.length ? `<label class="field"><span>Canciones trabajadas</span><div class="chips" style="flex-wrap:wrap">${songs.map(ss => { const sg = byId('songs', ss.songId) || {}; return `<button type="button" class="chip acc ${(ex.songs || []).includes(ss.id) ? 'on' : ''}" data-song="${ss.id}">${esc(sg.title)} · ${keyName(workKey(ss))}</button>`; }).join('')}</div></label>` : ''}
+    ${songs.length ? `<label class="field"><span>Canciones trabajadas</span><div class="chips" style="flex-wrap:wrap">${songs.map(ss => { const sg = byId('songs', ss.songId) || {}; return `<button type="button" class="chip acc ${(ex.songs || []).includes(ss.id) ? 'on' : ''}" data-song="${ss.id}">${esc(sg.title)}${semisOf(ss) ? ' · ' + fmtSemis(semisOf(ss)) : ''}</button>`; }).join('')}</div></label>` : ''}
     ${field('Ejercicios realizados', txa('exercises', ex.exercises, 'Ej: sirenas, lip trills, escalas en "u"…', 2))}
     ${field('Técnica vocal trabajada', txa('technique', ex.technique, 'Ej: apoyo, registro mixto, resonancia…', 2))}
     ${field('Dificultades observadas', txa('difficulties', ex.difficulties, '', 2))}

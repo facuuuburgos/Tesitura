@@ -30,10 +30,9 @@ VIEWS.settings = () => {
       ${L(`<span style="color:var(--acc)">Agregar horario</span>`, '', ic('plus', 'sm'), 'addHour')}</div>
     <div class="hint" style="margin-top:8px">Se marcan suavemente en el calendario para ver de un vistazo tus franjas de trabajo.</div>
 
-    <div class="group-t">Tonalidades</div>
+    <div class="group-t">Notación</div>
     <div class="card">
-      ${field('Notación', `<div class="seg"><button data-act="setOpt" data-k="notation" data-v="en" class="${st.notation === 'en' ? 'on' : ''}">C D E F G A B</button><button data-act="setOpt" data-k="notation" data-v="lat" class="${st.notation === 'lat' ? 'on' : ''}">Do Re Mi Fa Sol</button></div>`)}
-      ${field('Alteraciones', `<div class="seg"><button data-act="setOpt" data-k="accidentals" data-v="auto" class="${st.accidentals === 'auto' ? 'on' : ''}">Según la tonalidad</button><button data-act="setOpt" data-k="accidentals" data-v="sharp" class="${st.accidentals === 'sharp' ? 'on' : ''}">♯</button><button data-act="setOpt" data-k="accidentals" data-v="flat" class="${st.accidentals === 'flat' ? 'on' : ''}">♭</button></div>`, '“Según la tonalidad” usa la escritura habitual: E♭ en vez de D♯, F♯ en vez de G♭, etc.')}
+      ${field('Nombres de notas (extensión vocal)', `<div class="seg"><button data-act="setOpt" data-k="notation" data-v="en" class="${st.notation === 'en' ? 'on' : ''}">C D E F G A B</button><button data-act="setOpt" data-k="notation" data-v="lat" class="${st.notation === 'lat' ? 'on' : ''}">Do Re Mi Fa Sol</button></div>`)}
     </div>
 
     <div class="group-t">Ingresos</div>
@@ -301,7 +300,7 @@ ACT.exportAllXls = async () => {
     const wb = XLSX.utils.book_new(), add = (name, rows) => XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ '': 'Sin datos' }]), name);
     add('Alumnos', S.students.map(s => ({ Nombre: s.first, Apellido: s.last, Estado: ST_STATUS[s.status], Escuela: school(s.schoolId).name, Teléfono: s.phone, Email: s.email, Clasificación: s.voiceType, Extensión: rangeTxt(s), Objetivos: s.goals, Experiencia: s.experience, Fortalezas: s.strengths, Dificultades: s.difficulties, Observaciones: s.observations })));
     add('Clases', lessonRows('2000-01-01', addDays(today(), 0)));
-    add('Repertorio', S.studentSongs.map(x => { const sg = byId('songs', x.songId) || {}; return { Alumno: sName(student(x.studentId)), Canción: sg.title, Artista: sg.artist, 'Tonalidad original': keyName(sg.key), Semitonos: x.manual && x.workKey && sg.key ? semisBetween(sg.key.pc, x.workKey.pc) : x.transpose, 'Tonalidad de trabajo': keyName(workKey(x)), Enlace: x.link, Instrumental: x.karaoke, Observaciones: x.notes }; }));
+    add('Repertorio', S.studentSongs.map(x => { const sg = byId('songs', x.songId) || {}; return { Alumno: sName(student(x.studentId)), Canción: sg.title, Artista: sg.artist, Semitonos: semisOf(x), Enlace: x.link, Instrumental: x.karaoke, Observaciones: x.notes }; }));
     add('Registros', S.lessonNotes.map(n => ({ Fecha: n.date, Alumno: sName(student(n.studentId)), Ejercicios: n.exercises, Técnica: n.technique, Dificultades: n.difficulties, Avances: n.progress, Próxima: n.nextGoals, Notas: n.notes })));
     add('Facturas', S.invoices.map(i => ({ Número: i.number, Escuela: i.schoolName, Desde: i.from, Hasta: i.to, Emitida: i.issued, Total: i.total, Moneda: i.currency })));
     await deliver(new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `Tesitura ${today()}.xlsx`);

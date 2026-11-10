@@ -84,12 +84,11 @@ function stSongs(s) {
     ${past.length ? `<div class="sec"><h2>Anteriores</h2></div><div class="list">${past.map(ss => songRow(ss, true)).join('')}</div>` : ''}`;
 }
 function songRow(ss, past) {
-  const sg = byId('songs', ss.songId) || {}, wk = workKey(ss);
-  const t = ss.manual && ss.workKey && sg.key ? semisBetween(sg.key.pc, ss.workKey.pc) : (ss.transpose || 0);
+  const sg = byId('songs', ss.songId) || {}, t = semisOf(ss);
   const logs = S.lessonNotes.filter(n => (n.songs || []).includes(ss.id)).length;
   return `<button class="li tap" data-act="openSong" data-id="${ss.id}" style="${past ? 'opacity:.7' : ''}">
-    <div class="keytag">${keyName(wk)}${sg.key ? `<small>${fmtSemis(t)}</small>` : ''}</div>
-    <div class="grow"><div class="t ell">${esc(sg.title || '¿?')}</div><div class="s ell">${esc(sg.artist || 'Artista desconocido')}${sg.key ? ' · original ' + keyName(sg.key) : ''}</div>
+    ${semisTag(t)}
+    <div class="grow"><div class="t ell">${esc(sg.title || '¿?')}</div><div class="s ell">${esc(sg.artist || 'Artista desconocido')} · ${semisTxt(t)}</div>
     ${logs ? `<div class="xs dim">Trabajada en ${logs} clase${logs > 1 ? 's' : ''}</div>` : ''}</div>${ic('chevR', 'sm chev')}</button>`;
 }
 ACT.newSong = el => songForm(null, el.dataset.id);
@@ -99,18 +98,16 @@ function songSheet(id) {
     title: () => { const ss = byId('studentSongs', id); return esc((byId('songs', ss && ss.songId) || {}).title || 'Canción'); },
     body: () => {
       const ss = byId('studentSongs', id); if (!ss) return '<div class="muted">Eliminada</div>';
-      const sg = byId('songs', ss.songId) || {}, wk = workKey(ss);
-      const t = ss.manual && ss.workKey && sg.key ? semisBetween(sg.key.pc, ss.workKey.pc) : (ss.transpose || 0);
+      const sg = byId('songs', ss.songId) || {}, t = semisOf(ss);
       const logs = S.lessonNotes.filter(n => (n.songs || []).includes(ss.id)).sort((a, b) => b.date.localeCompare(a.date));
       const other = S.studentSongs.filter(x => x.songId === ss.songId && x.studentId === ss.studentId && x.id !== ss.id);
+      const hist = (ss.keyHistory || []).map(h => h.t);
       return `<div class="muted small" style="margin:-6px 0 12px">${esc(sg.artist || '')}</div>
-        <div class="keybig"><div class="from"><div class="lab">Original</div><div class="kv">${keyName(sg.key)}</div><div class="eq">${enharm(sg.key) ? '= ' + enharm(sg.key) : '&nbsp;'}</div></div>
-        <div class="arrow"><b>${fmtSemis(t)}</b>semitonos</div>
-        <div class="to"><div class="lab">De trabajo</div><div class="kv">${keyName(wk)}</div><div class="eq">${enharm(wk) ? '= ' + enharm(wk) : '&nbsp;'}</div></div></div>
+        <div class="keybig" style="justify-content:center"><div class="center"><div class="lab">Tono</div><div class="kv" style="color:${t ? 'var(--acc)' : 'var(--tx)'}">${t ? fmtSemis(t) : 'Original'}</div><div class="eq">${t ? (Math.abs(t) === 1 ? 'semitono' : 'semitonos') + (t > 0 ? ' arriba' : ' abajo') : 'sin transportar'}</div></div></div>
         <dl class="kv">${ss.notes ? `<dt>Observaciones</dt><dd>${esc(ss.notes)}</dd>` : ''}</dl>
         <div class="links" style="margin-top:12px">${ss.link ? `<a href="${esc(ss.link)}" target="_blank" rel="noopener">${ic('play', 'sm')}Original</a>` : ''}${ss.karaoke ? `<a href="${esc(ss.karaoke)}" target="_blank" rel="noopener">${ic('mic', 'sm')}Instrumental</a>` : ''}${(ss.recordings || []).map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener">${ic('link', 'sm')}${esc(r.label || 'Grabación')}</a>`).join('')}</div>
-        ${(ss.keyHistory || []).length ? `<div class="group-t">Historial de tonalidad</div><div class="list">${[...ss.keyHistory].reverse().map(h => `<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px;opacity:.75">${keyName(h.key)}</div><div class="grow small"><div>${fmtSemis(h.t)} semitonos${sg.key ? ' desde ' + keyName(sg.key) : ''}</div><div class="muted xs">anterior</div></div></div>`).join('')}<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px">${keyName(wk)}</div><div class="grow small"><div>${fmtSemis(t)} semitonos · actual</div></div></div></div>` : ''}
-        ${other.length ? `<div class="group-t">Otras veces que la trabajó</div><div class="small muted">En ${other.map(x => keyName(workKey(x))).join(', ')}</div>` : ''}
+        ${hist.length ? `<div class="group-t">Cambios de tono</div><div class="small muted">${[...hist, t].map((x, i, a) => i === a.length - 1 ? `<b style="color:var(--tx)">${semisTxt(x)} (actual)</b>` : semisTxt(x)).join(' → ')}</div>` : ''}
+        ${other.length ? `<div class="group-t">Otras veces que la trabajó</div><div class="small muted">${other.map(x => semisTxt(semisOf(x))).join(' · ')}</div>` : ''}
         ${logs.length ? `<div class="group-t">En las clases</div>${logs.slice(0, 8).map(n => `<div class="small" style="margin-bottom:6px"><b>${fmtDate(n.date)}</b> <span class="muted">${esc([n.technique, n.progress, n.difficulties].filter(Boolean).join(' · ').slice(0, 140))}</span></div>`).join('')}` : ''}
         <div class="btns"><button class="btn sm" data-ed>${ic('edit', 'sm')}Editar</button>${ss.endedAt ? `<button class="btn sm" data-again>${ic('repeat', 'sm')}Volver a trabajarla</button>` : `<button class="btn sm" data-end>${ic('check', 'sm')}Terminada</button>`}</div>
         <button class="btn sm ghost danger full" style="margin-top:6px" data-del>${ic('trash', 'sm')}Eliminar</button>`;
@@ -122,7 +119,7 @@ function songSheet(id) {
       if (q('[data-end]')) q('[data-end]').onclick = () => { ss.endedAt = today(); upsert('studentSongs', ss); save(); sh.render(); render(); toast('Pasó a canciones anteriores'); };
       if (q('[data-again]')) q('[data-again]').onclick = () => {
         // vuelve a trabajarse: nuevo período, el anterior queda en el historial
-        const n = upsert('studentSongs', Object.assign(clone(ss), { id: uid(), startedAt: today(), endedAt: '', recordings: [] }));
+        const n = upsert('studentSongs', Object.assign(clone(ss), { id: uid(), startedAt: today(), endedAt: '', recordings: [], keyHistory: [] }));
         save(); sh.close(); render(); setTimeout(() => songSheet(n.id), 250); toast('Canción en curso de nuevo (el período anterior queda guardado)');
       };
       q('[data-del]').onclick = async () => {
@@ -132,73 +129,49 @@ function songSheet(id) {
     }
   });
 }
-// selector de tonalidad (12 notas + mayor/menor)
-function keyPicker(name, k, allowEmpty) {
-  const minor = k && k.minor;
-  const sp = S.settings.accidentals === 'flat' ? 'f' : S.settings.accidentals === 'sharp' ? 's' : null;
-  return `<div data-keypick="${name}" data-pc="${k && k.pc != null ? k.pc : ''}" data-minor="${minor ? 1 : 0}">
-    <div class="keys ${S.settings.notation === 'lat' ? 'lat' : ''}">${[...Array(12)].map((_, pc) => { const kk = { pc, minor }; return `<button type="button" class="${BLACK.includes(pc) ? 'blk' : ''} ${k && +k.pc === pc ? 'on' : ''}" data-pc="${pc}">${keyName(kk, sp ? { spell: sp } : {}).replace(/m$/, '')}${BLACK.includes(pc) && !sp ? `<span class="dim" style="font-size:10px;display:block;margin-top:-3px">${keyName(kk, { spell: spellFor(kk) === 's' ? 'f' : 's' }).replace(/m$/, '')}</span>` : ''}</button>`; }).join('')}</div>
-    <div class="seg" style="margin-top:8px"><button type="button" data-min="0" class="${!minor ? 'on' : ''}">Mayor</button><button type="button" data-min="1" class="${minor ? 'on' : ''}">Menor</button>${allowEmpty ? `<button type="button" data-clear class="${!k || k.pc == null ? 'on' : ''}">No sé</button>` : ''}</div></div>`;
-}
-const readKey = el => { if (!el || el.dataset.pc === '') return null; return { pc: +el.dataset.pc, minor: el.dataset.minor === '1' }; };
 
 function songForm(ss, studentId, after) {
   const sg = ss ? byId('songs', ss.songId) || {} : {};
   const F = {
-    title: sg.title || '', artist: sg.artist || '', key: sg.key || null, transpose: ss ? (ss.manual && ss.workKey && sg.key ? semisBetween(sg.key.pc, ss.workKey.pc) : (+ss.transpose || 0)) : 0,
-    manual: ss ? !!ss.manual : false, workKey: ss ? workKey(ss) : null, startedAt: ss ? ss.startedAt || '' : today(), link: ss ? ss.link || '' : '', karaoke: ss ? ss.karaoke || '' : '',
+    title: sg.title || '', artist: sg.artist || '', transpose: ss ? semisOf(ss) : 0,
+    startedAt: ss ? ss.startedAt || '' : today(), link: ss ? ss.link || '' : '', karaoke: ss ? ss.karaoke || '' : '',
     recordings: ss ? clone(ss.recordings || []) : [], notes: ss ? ss.notes || '' : '', songId: ss ? ss.songId : null
   };
   const suggHtml = () => {
     const q = norm(F.title);
     const sugg = !F.songId && q.length > 1 ? S.songs.filter(x => norm(x.title).includes(q)).slice(0, 4) : [];
-    return sugg.length ? `<div class="chips" style="flex-wrap:wrap;margin:-4px 0 12px">${sugg.map(x => `<button type="button" class="chip" data-sugg="${x.id}">${esc(x.title)} · ${esc(x.artist || '')} ${x.key ? '(' + keyName(x.key) + ')' : ''}</button>`).join('')}</div>` : '';
+    return sugg.length ? `<div class="chips" style="flex-wrap:wrap;margin:-4px 0 12px">${sugg.map(x => `<button type="button" class="chip" data-sugg="${x.id}">${esc(x.title)}${x.artist ? ' · ' + esc(x.artist) : ''}</button>`).join('')}</div>` : '';
   };
+  const trHtml = () => `<div class="stepper" style="max-width:220px;margin:0 auto"><button type="button" data-tr="-1" aria-label="Bajar un semitono">−</button><div class="val">${F.transpose ? fmtSemis(F.transpose) : 'Original'}</div><button type="button" data-tr="1" aria-label="Subir un semitono">+</button></div>
+    <div class="center xs muted" style="margin-top:6px">${F.transpose ? (Math.abs(F.transpose) === 1 ? 'semitono' : 'semitonos') + (F.transpose > 0 ? ' arriba' : ' abajo') + ' · <a href="#" data-tr0>volver al original</a>' : 'Opcional: subila o bajala por semitonos'}</div>`;
   const sh = openSheet({
     title: ss ? 'Editar canción' : 'Nueva canción',
-    body: () => {
-      const wk = F.manual ? F.workKey : transposeKey(F.key, F.transpose);
-      return `${field('Canción', inp('title', F.title, { ph: 'Nombre de la canción', attrs: 'autocomplete="off"' }))}
+    body: () => `${field('Canción', inp('title', F.title, { ph: 'Nombre de la canción', attrs: 'autocomplete="off"' }))}
         <div data-suggs>${suggHtml()}</div>
         ${F.songId ? `<div class="hint" style="margin-top:-8px">Canción de tu biblioteca. <a href="#" data-unlink>Usar como canción nueva</a></div>` : ''}
         ${field('Artista', inp('artist', F.artist, { ph: 'Intérprete original' }))}
-        <label class="field"><span>Tonalidad original</span>${keyPicker('key', F.key, true)}</label>
-        <div class="keybig"><div class="from"><div class="lab">Original</div><div class="kv">${keyName(F.key)}</div><div class="eq">${enharm(F.key) ? '= ' + enharm(F.key) : '&nbsp;'}</div></div>
-          <div class="arrow"><div class="stepper" style="height:40px;margin:0 auto;max-width:150px"><button type="button" data-tr="-1">−</button><div class="val small">${fmtSemis(F.transpose)}</div><button type="button" data-tr="1">+</button></div><div class="xs" style="margin-top:4px">semitonos</div></div>
-          <div class="to"><div class="lab">De trabajo</div><div class="kv">${keyName(wk)}</div><div class="eq">${enharm(wk) ? '= ' + enharm(wk) : '&nbsp;'}</div></div></div>
-        <div class="list" style="margin-bottom:12px">${sw('manual', F.manual, 'Elegir la tonalidad de trabajo a mano', F.manual ? 'Los semitonos se calculan solos' : 'Se calcula con la transposición')}</div>
-        ${F.manual ? `<label class="field"><span>Tonalidad de trabajo</span>${keyPicker('workKey', F.workKey, false)}</label>` : ''}
+        <label class="field"><span>Tono</span></label><div data-trbox style="margin:-6px 0 16px">${trHtml()}</div>
         ${field('Enlace (YouTube, Spotify…)', inp('link', F.link, { type: 'url', ph: 'https://' }))}
         ${field('Instrumental o karaoke', inp('karaoke', F.karaoke, { type: 'url', ph: 'https://' }))}
         <label class="field"><span>Grabaciones del alumno</span>
           ${F.recordings.map((r, i) => `<div class="row" style="margin-bottom:6px"><input class="inp" data-rl="${i}" value="${esc(r.label)}" placeholder="Nombre" style="flex:1"><input class="inp" data-ru="${i}" value="${esc(r.url)}" placeholder="Enlace (Drive, WhatsApp…)" style="flex:2"><button type="button" class="iconbtn plain" data-rrm="${i}">${ic('x', 'sm')}</button></div>`).join('')}
           <button type="button" class="btn sm" data-radd>${ic('plus', 'sm')}Agregar grabación</button></label>
         ${field('Observaciones', txa('notes', F.notes, 'Ej: respirar antes del puente, cuidar el pasaje en el estribillo…', 3))}
-        <button class="btn pri full" data-save>${ic('check', 'sm')}Guardar</button>`;
-    },
+        <button class="btn pri full" data-save>${ic('check', 'sm')}Guardar</button>`,
     mount: (el, sh) => {
       const grab = () => {
         ['title', 'artist', 'link', 'karaoke', 'notes'].forEach(n => { F[n] = el.querySelector(`[name="${n}"]`).value; });
         F.recordings = F.recordings.map((r, i) => ({ id: r.id || uid(), label: (el.querySelector(`[data-rl="${i}"]`) || {}).value || '', url: (el.querySelector(`[data-ru="${i}"]`) || {}).value || '', date: r.date || today() }));
       };
-      el.querySelectorAll('[data-keypick]').forEach(kp => {
-        kp.querySelectorAll('[data-pc]').forEach(b => b.onclick = () => { grab(); const k = { pc: +b.dataset.pc, minor: kp.dataset.minor === '1' }; setK(kp.dataset.keypick, k); sh.render(); });
-        kp.querySelectorAll('[data-min]').forEach(b => b.onclick = () => { grab(); const cur = readKey(kp) || { pc: 0 }; setK(kp.dataset.keypick, { pc: cur.pc, minor: b.dataset.min === '1' }); sh.render(); });
-        const c = kp.querySelector('[data-clear]'); if (c) c.onclick = () => { grab(); F.key = null; sh.render(); };
-      });
-      function setK(name, k) {
-        if (name === 'key') { F.key = k; if (F.manual && F.workKey) { F.workKey.minor = k.minor; F.transpose = semisBetween(k.pc, F.workKey.pc); } }
-        else { F.workKey = k; if (F.key) { F.transpose = semisBetween(F.key.pc, k.pc); F.key.minor = k.minor; } }
-      }
-      el.querySelectorAll('[data-tr]').forEach(b => b.onclick = () => {
-        grab(); F.transpose = Math.max(-11, Math.min(11, F.transpose + +b.dataset.tr));
-        if (F.manual) { F.manual = false; } // cambiar semitonos vuelve al cálculo automático
-        if (!F.key) toast('Elegí primero la tonalidad original', 'err');
-        sh.render();
-      });
-      el.querySelector('[name=manual]').onchange = e => { grab(); F.manual = e.target.checked; F.workKey = transposeKey(F.key, F.transpose) || { pc: 0, minor: F.key ? F.key.minor : false }; sh.render(); };
+      // el tono se actualiza en el lugar, sin redibujar el formulario
+      const box2 = el.querySelector('[data-trbox]');
+      const bindTr = () => {
+        box2.querySelectorAll('[data-tr]').forEach(b => b.onclick = () => { F.transpose = Math.max(-12, Math.min(12, F.transpose + +b.dataset.tr)); box2.innerHTML = trHtml(); bindTr(); });
+        const z = box2.querySelector('[data-tr0]'); if (z) z.onclick = e => { e.preventDefault(); F.transpose = 0; box2.innerHTML = trHtml(); bindTr(); };
+      };
+      bindTr();
       const ti = el.querySelector('[name=title]'), box = el.querySelector('[data-suggs]');
-      const bindSugg = () => box.querySelectorAll('[data-sugg]').forEach(b => b.onclick = () => { grab(); const x = byId('songs', b.dataset.sugg); F.songId = x.id; F.title = x.title; F.artist = x.artist; F.key = x.key ? clone(x.key) : null; sh.render(); });
+      const bindSugg = () => box.querySelectorAll('[data-sugg]').forEach(b => b.onclick = () => { grab(); const x = byId('songs', b.dataset.sugg); F.songId = x.id; F.title = x.title; F.artist = x.artist; sh.render(); });
       if (!F.songId) ti.oninput = () => { F.title = ti.value; box.innerHTML = suggHtml(); bindSugg(); };
       bindSugg();
       const ul = el.querySelector('[data-unlink]'); if (ul) ul.onclick = e => { e.preventDefault(); grab(); F.songId = null; sh.render(); };
@@ -213,22 +186,12 @@ function songForm(ss, studentId, after) {
         let song = F.songId ? byId('songs', F.songId) : (ss ? byId('songs', ss.songId) : null);
         const shared = song && S.studentSongs.some(x => x.songId === song.id && (!ss || x.id !== ss.id));
         if (!song || (ss && !F.songId && shared && (norm(song.title) !== norm(F.title)))) song = S.songs.find(x => norm(x.title) === norm(F.title) && norm(x.artist) === norm(F.artist)) || { id: uid() };
-        Object.assign(song, { title: F.title, artist: F.artist, key: F.key });
+        Object.assign(song, { title: F.title, artist: F.artist });
         upsert('songs', song);
         const rec = ss || { id: uid(), studentId, endedAt: '' };
-        // si cambió la tonalidad de trabajo, se guarda la anterior en el historial
-        if (ss) {
-          const oldSong = byId('songs', ss.songId) || {}, oldK = workKey(ss), newK = F.manual ? F.workKey : transposeKey(F.key, F.transpose);
-          const oldT = ss.manual && ss.workKey && oldSong.key ? semisBetween(oldSong.key.pc, ss.workKey.pc) : (+ss.transpose || 0);
-          if (oldK && newK && (oldK.pc !== newK.pc || oldK.minor !== newK.minor || oldT !== F.transpose)) {
-            rec.keyHistory = [...(ss.keyHistory || []), { since: ss.keySince || ss.startedAt || '', until: today(), key: oldK, t: oldT }];
-            rec.keySince = today();
-          }
-        } else rec.keySince = F.startedAt || today();
-        Object.assign(rec, {
-          songId: song.id, transpose: F.transpose, manual: F.manual, workKey: F.manual ? F.workKey : null, startedAt: F.startedAt, link: F.link, karaoke: F.karaoke,
-          recordings: F.recordings.filter(r => r.url), notes: F.notes
-        });
+        // si cambió el tono, el anterior queda en el historial
+        if (ss && semisOf(ss) !== F.transpose) rec.keyHistory = [...(ss.keyHistory || []), { until: today(), t: semisOf(ss) }];
+        Object.assign(rec, { songId: song.id, transpose: F.transpose, manual: false, workKey: null, startedAt: F.startedAt, link: F.link, karaoke: F.karaoke, recordings: F.recordings.filter(r => r.url), notes: F.notes });
         upsert('studentSongs', rec);
         save(); sh.close(); render(); if (after) after(); toast(ss ? 'Canción actualizada' : 'Canción agregada');
       };
@@ -246,7 +209,7 @@ function stLessons(s) {
     <div class="timeline">${ls.map(l => {
     const n = S.lessonNotes.find(x => x.lessonId === l.id && x.studentId === s.id);
     const st = STATUS[stOf(l)];
-    const songs = n ? (n.songs || []).map(id => { const ss = byId('studentSongs', id); const sg = ss && byId('songs', ss.songId); return sg ? `${sg.title} (${keyName(workKey(ss))})` : ''; }).filter(Boolean).join(', ') : '';
+    const songs = n ? (n.songs || []).map(id => { const ss = byId('studentSongs', id); const sg = ss && byId('songs', ss.songId); return sg ? `${sg.title}${semisOf(ss) ? ' (' + fmtSemis(semisOf(ss)) + ')' : ''}` : ''; }).filter(Boolean).join(', ') : '';
     const rows = n ? [['Canciones', songs], ['Ejercicios', n.exercises], ['Técnica', n.technique], ['Dificultades', n.difficulties], ['Avances', n.progress], ['Próxima', n.nextGoals], ['Notas', n.notes]].filter(r => r[1]) : [];
     return `<div class="tl ${l.status !== 'done' ? 'off' : ''}"><div class="hd"><b>${fmtDate(l.date, { dow: 1, year: l.date.slice(0, 4) !== t.slice(0, 4) })}</b><span class="small muted">${l.start} · ${fmtDur(+l.realDur || l.duration)}</span><span class="pill ${st.c}">${st.s}</span>${lessonMode(l) === 'group' ? '<span class="pill group">Grupal</span>' : ''}<button class="mini" style="margin-left:auto" data-act="openLesson" data-id="${l.id}">${n ? 'Ver' : (l.status === 'done' ? 'Registrar' : 'Ver')}</button></div>
       ${rows.length ? `<div class="logbox">${rows.map(r => `<div class="r"><span>${r[0]}</span><span>${esc(r[1])}</span></div>`).join('')}</div>` : ''}</div>`;

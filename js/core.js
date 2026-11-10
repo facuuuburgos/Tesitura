@@ -213,6 +213,14 @@ function workKey(ss) {
   const song = byId('songs', ss.songId);
   return transposeKey(song && song.key, ss.transpose || 0);
 }
+function semisOf(ss) {
+  if (!ss) return 0;
+  const sg = byId('songs', ss.songId);
+  if (ss.manual && ss.workKey && sg && sg.key) return semisBetween(sg.key.pc, ss.workKey.pc);
+  return +ss.transpose || 0;
+}
+const semisTxt = t => t ? `${fmtSemis(t)} ${Math.abs(t) === 1 ? 'semitono' : 'semitonos'}` : 'Tono original';
+const semisTag = (t, small) => `<div class="keytag" style="${small ? 'min-width:42px;height:40px;font-size:15px;' : ''}${t ? '' : 'background:var(--card2);color:var(--tx2);font-size:' + (small ? 11 : 12) + 'px'}">${t ? fmtSemis(t) : 'Orig.'}${t && !small ? '<small>st</small>' : ''}</div>`;
 // nombre de nota con octava para la extensión vocal (MIDI 60 = C4)
 const midiName = m => m == null || m === '' ? '—' : noteName(mod(m, 12), 's') + (Math.floor(m / 12) - 1);
 const rangeTxt = st => st && st.rangeLow != null && st.rangeHigh != null && st.rangeLow !== '' ? `${midiName(+st.rangeLow)} – ${midiName(+st.rangeHigh)}` : '';
