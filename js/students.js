@@ -90,7 +90,7 @@ function songRow(ss, past) {
   return `<button class="li tap" data-act="openSong" data-id="${ss.id}" style="${past ? 'opacity:.7' : ''}">
     <div class="keytag">${keyName(wk)}${sg.key ? `<small>${fmtSemis(t)}</small>` : ''}</div>
     <div class="grow"><div class="t ell">${esc(sg.title || '¿?')}</div><div class="s ell">${esc(sg.artist || 'Artista desconocido')}${sg.key ? ' · original ' + keyName(sg.key) : ''}</div>
-    <div class="xs dim">${past ? `${fmtDate(ss.startedAt)} → ${fmtDate(ss.endedAt)}` : (ss.startedAt ? 'Desde ' + fmtDate(ss.startedAt) : '')}${logs ? ` · trabajada en ${logs} clase${logs > 1 ? 's' : ''}` : ''}</div></div>${ic('chevR', 'sm chev')}</button>`;
+    ${logs ? `<div class="xs dim">Trabajada en ${logs} clase${logs > 1 ? 's' : ''}</div>` : ''}</div>${ic('chevR', 'sm chev')}</button>`;
 }
 ACT.newSong = el => songForm(null, el.dataset.id);
 ACT.openSong = el => songSheet(el.dataset.id);
@@ -107,10 +107,10 @@ function songSheet(id) {
         <div class="keybig"><div class="from"><div class="lab">Original</div><div class="kv">${keyName(sg.key)}</div><div class="eq">${enharm(sg.key) ? '= ' + enharm(sg.key) : '&nbsp;'}</div></div>
         <div class="arrow"><b>${fmtSemis(t)}</b>semitonos</div>
         <div class="to"><div class="lab">De trabajo</div><div class="kv">${keyName(wk)}</div><div class="eq">${enharm(wk) ? '= ' + enharm(wk) : '&nbsp;'}</div></div></div>
-        <dl class="kv">${ss.startedAt ? `<dt>Comenzó</dt><dd>${fmtDate(ss.startedAt, { year: 1 })}</dd>` : ''}${ss.endedAt ? `<dt>Terminó</dt><dd>${fmtDate(ss.endedAt, { year: 1 })}</dd>` : ''}${ss.notes ? `<dt>Observaciones</dt><dd>${esc(ss.notes)}</dd>` : ''}</dl>
-        <div class="links" style="margin-top:12px">${ss.link ? `<a href="${esc(ss.link)}" target="_blank" rel="noopener">${ic('play', 'sm')}Original</a>` : ''}${ss.karaoke ? `<a href="${esc(ss.karaoke)}" target="_blank" rel="noopener">${ic('mic', 'sm')}Instrumental</a>` : ''}${(ss.recordings || []).map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener">${ic('link', 'sm')}${esc(r.label || 'Grabación')}${r.date ? ' · ' + fmtDate(r.date) : ''}</a>`).join('')}</div>
-        ${(ss.keyHistory || []).length ? `<div class="group-t">Historial de tonalidad</div><div class="list">${[...ss.keyHistory].reverse().map(h => `<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px;opacity:.75">${keyName(h.key)}</div><div class="grow small"><div>${fmtSemis(h.t)} semitonos${sg.key ? ' desde ' + keyName(sg.key) : ''}</div><div class="muted xs">${h.since ? fmtDate(h.since) + ' → ' : 'hasta '}${fmtDate(h.until)}</div></div></div>`).join('')}<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px">${keyName(wk)}</div><div class="grow small"><div>${fmtSemis(t)} semitonos · actual</div><div class="muted xs">desde ${fmtDate(ss.keySince || ss.startedAt)}</div></div></div></div>` : ''}
-        ${other.length ? `<div class="group-t">Otras veces que la trabajó</div><div class="small muted">${other.map(x => `${fmtDate(x.startedAt)}${x.endedAt ? '–' + fmtDate(x.endedAt) : ''} en ${keyName(workKey(x))}`).join(' · ')}</div>` : ''}
+        <dl class="kv">${ss.notes ? `<dt>Observaciones</dt><dd>${esc(ss.notes)}</dd>` : ''}</dl>
+        <div class="links" style="margin-top:12px">${ss.link ? `<a href="${esc(ss.link)}" target="_blank" rel="noopener">${ic('play', 'sm')}Original</a>` : ''}${ss.karaoke ? `<a href="${esc(ss.karaoke)}" target="_blank" rel="noopener">${ic('mic', 'sm')}Instrumental</a>` : ''}${(ss.recordings || []).map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener">${ic('link', 'sm')}${esc(r.label || 'Grabación')}</a>`).join('')}</div>
+        ${(ss.keyHistory || []).length ? `<div class="group-t">Historial de tonalidad</div><div class="list">${[...ss.keyHistory].reverse().map(h => `<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px;opacity:.75">${keyName(h.key)}</div><div class="grow small"><div>${fmtSemis(h.t)} semitonos${sg.key ? ' desde ' + keyName(sg.key) : ''}</div><div class="muted xs">anterior</div></div></div>`).join('')}<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px">${keyName(wk)}</div><div class="grow small"><div>${fmtSemis(t)} semitonos · actual</div></div></div></div>` : ''}
+        ${other.length ? `<div class="group-t">Otras veces que la trabajó</div><div class="small muted">En ${other.map(x => keyName(workKey(x))).join(', ')}</div>` : ''}
         ${logs.length ? `<div class="group-t">En las clases</div>${logs.slice(0, 8).map(n => `<div class="small" style="margin-bottom:6px"><b>${fmtDate(n.date)}</b> <span class="muted">${esc([n.technique, n.progress, n.difficulties].filter(Boolean).join(' · ').slice(0, 140))}</span></div>`).join('')}` : ''}
         <div class="btns"><button class="btn sm" data-ed>${ic('edit', 'sm')}Editar</button>${ss.endedAt ? `<button class="btn sm" data-again>${ic('repeat', 'sm')}Volver a trabajarla</button>` : `<button class="btn sm" data-end>${ic('check', 'sm')}Terminada</button>`}</div>
         <button class="btn sm ghost danger full" style="margin-top:6px" data-del>${ic('trash', 'sm')}Eliminar</button>`;
@@ -168,7 +168,6 @@ function songForm(ss, studentId, after) {
           <div class="to"><div class="lab">De trabajo</div><div class="kv">${keyName(wk)}</div><div class="eq">${enharm(wk) ? '= ' + enharm(wk) : '&nbsp;'}</div></div></div>
         <div class="list" style="margin-bottom:12px">${sw('manual', F.manual, 'Elegir la tonalidad de trabajo a mano', F.manual ? 'Los semitonos se calculan solos' : 'Se calcula con la transposición')}</div>
         ${F.manual ? `<label class="field"><span>Tonalidad de trabajo</span>${keyPicker('workKey', F.workKey, false)}</label>` : ''}
-        ${field('Comenzó a trabajarla', inp('startedAt', F.startedAt, { type: 'date' }))}
         ${field('Enlace (YouTube, Spotify…)', inp('link', F.link, { type: 'url', ph: 'https://' }))}
         ${field('Instrumental o karaoke', inp('karaoke', F.karaoke, { type: 'url', ph: 'https://' }))}
         <label class="field"><span>Grabaciones del alumno</span>
@@ -179,7 +178,7 @@ function songForm(ss, studentId, after) {
     },
     mount: (el, sh) => {
       const grab = () => {
-        ['title', 'artist', 'startedAt', 'link', 'karaoke', 'notes'].forEach(n => { F[n] = el.querySelector(`[name="${n}"]`).value; });
+        ['title', 'artist', 'link', 'karaoke', 'notes'].forEach(n => { F[n] = el.querySelector(`[name="${n}"]`).value; });
         F.recordings = F.recordings.map((r, i) => ({ id: r.id || uid(), label: (el.querySelector(`[data-rl="${i}"]`) || {}).value || '', url: (el.querySelector(`[data-ru="${i}"]`) || {}).value || '', date: r.date || today() }));
       };
       el.querySelectorAll('[data-keypick]').forEach(kp => {
@@ -288,7 +287,7 @@ function stInfo(s) {
   const row = (k, v) => v ? `<dt>${k}</dt><dd>${esc(v)}</dd>` : '';
   const sc = school(s.schoolId);
   return `<div class="group-t">Datos personales</div><div class="card"><dl class="kv">
-      ${row('Teléfono', s.phone)}${row('Email', s.email)}${row('Ingreso', s.joined && fmtDate(s.joined, { year: 1 }))}${row('Escuela', sc.name)}${row('Estado', ST_STATUS[s.status])}${row('Información', s.info)}
+      ${row('Teléfono', s.phone)}${row('Email', s.email)}${row('Escuela', sc.name)}${row('Estado', ST_STATUS[s.status])}${row('Información', s.info)}
     </dl></div>
     <div class="group-t">Información pedagógica</div><div class="card"><dl class="kv">
       ${row('Clasificación', s.voiceType)}${row('Extensión', rangeTxt(s))}${row('Objetivos', s.goals)}${row('Experiencia', s.experience)}${row('Fortalezas', s.strengths)}${row('Dificultades', s.difficulties)}${row('Observaciones', s.observations)}
@@ -296,14 +295,14 @@ function stInfo(s) {
     <div class="sp"></div><button class="btn full" data-act="editStudent" data-id="${s.id}">${ic('edit', 'sm')}Editar ficha</button>`;
 }
 function studentForm(s, o = {}) {
-  const F = s ? clone(s) : { first: o.first || '', last: '', status: 'active', joined: today(), schoolId: UI.stuSchool || (activeSchools()[0] || {}).id, photo: '' };
+  const F = s ? clone(s) : { first: o.first || '', last: '', status: 'active', schoolId: UI.stuSchool || (activeSchools()[0] || {}).id, photo: '' };
   const notes = [...Array(61)].map((_, i) => [36 + i, midiName(36 + i)]);
   const sh = openSheet({
     title: s ? 'Editar alumno' : 'Nuevo alumno',
     body: () => `<div class="row" style="margin-bottom:16px">${avatar(F, 'xl')}<div class="grow"><label class="btn sm">${ic('camera', 'sm')}${F.photo ? 'Cambiar foto' : 'Agregar foto'}<input type="file" accept="image/*" data-photo hidden></label>${F.photo ? `<button class="btn sm ghost" data-nophoto>Quitar</button>` : ''}</div></div>
       <div class="grid2">${field('Nombre', inp('first', F.first, { attrs: 'autocomplete="off"' }))}${field('Apellido', inp('last', F.last, { attrs: 'autocomplete="off"' }))}</div>
       <div class="grid2">${field('Teléfono', inp('phone', F.phone, { type: 'tel', ph: '+598…' }))}${field('Email', inp('email', F.email, { type: 'email' }))}</div>
-      <div class="grid2">${field('Fecha de ingreso', inp('joined', F.joined, { type: 'date' }))}${field('Estado', sel('status', F.status, Object.entries(ST_STATUS)))}</div>
+      ${field('Estado', sel('status', F.status, Object.entries(ST_STATUS)))}
       ${field('Escuela', sel('schoolId', F.schoolId, S.schools.filter(x => !x.archived || x.id === F.schoolId).map(x => [x.id, x.name])), activeSchools().length < 2 ? 'Podés agregar escuelas en Configuración.' : '')}
       ${field('Información adicional', txa('info', F.info, '', 2))}
       <div class="group-t">Información pedagógica</div>
@@ -316,7 +315,7 @@ function studentForm(s, o = {}) {
       <button class="btn pri full" data-save>${ic('check', 'sm')}Guardar</button>
       ${s ? `<button class="btn ghost danger full" style="margin-top:6px" data-del>${ic('trash', 'sm')}Eliminar alumno</button>` : ''}`,
     mount: (el, sh) => {
-      const fields = ['first', 'last', 'phone', 'email', 'joined', 'status', 'schoolId', 'info', 'goals', 'experience', 'strengths', 'difficulties', 'rangeLow', 'rangeHigh', 'voiceType', 'observations'];
+      const fields = ['first', 'last', 'phone', 'email', 'status', 'schoolId', 'info', 'goals', 'experience', 'strengths', 'difficulties', 'rangeLow', 'rangeHigh', 'voiceType', 'observations'];
       const grab = () => fields.forEach(n => { F[n] = fval(el, n); });
       el.querySelector('[data-photo]').onchange = async e => {
         const f = e.target.files[0]; if (!f) return;
