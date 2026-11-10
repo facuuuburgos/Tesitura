@@ -5,6 +5,7 @@
 document.addEventListener('touchmove', e => { if (e.touches.length > 1 || (e.scale && e.scale !== 1)) e.preventDefault(); }, { passive: false });
 // el doble toque ya no hace zoom gracias a touch-action: manipulation (así los toques rápidos en + y − siguen funcionando)
 document.addEventListener('dblclick', e => e.preventDefault(), { passive: false });
+lastRouted = location.hash;
 route();
 loadFx();
 window.addEventListener('online', () => loadFx());

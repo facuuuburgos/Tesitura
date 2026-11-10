@@ -46,6 +46,7 @@ const IC = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
   shift: '<path d="M8 3 4 7l4 4M4 7h12a4 4 0 0 1 0 8h-1M16 21l4-4-4-4M20 17H8"/>',
   play: '<path d="M7 4v16l13-8z"/>',
+  curtain: '<path d="M2 3h20M2 21h20"/><path d="M2 3v3.2c1.8 0 2.4-1.2 3.3-1.2s1.5 1.2 3.3 1.2S11 5 12 5s1.6 1.2 3.4 1.2S17.8 5 18.7 5 20.2 6.2 22 6.2V3"/><path d="M3.5 6v15H8c-.3-3-1.6-5.6-3.2-7.4C6 11.6 6.6 9 6.6 6.3"/><path d="M20.5 6v15H16c.3-3 1.6-5.6 3.2-7.4C18 11.6 17.4 9 17.4 6.3"/>',
 };
 const ic = (n, c = '') => `<svg class="i ${c}" viewBox="0 0 24 24" aria-hidden="true">${IC[n] || ''}</svg>`;
 const $ = (s, r = document) => r.querySelector(s);
@@ -169,8 +170,35 @@ const UI = {
   stTab: {}, statPer: 'month', statDate: today(), statFrom: '', statTo: '', statSchool: '', statTab: 'sum',
   invSchool: '', invMonth: monthStart(addMonths(today(), -1)),
 };
-function go(h) { if (location.hash === h) render(); else location.hash = h; }
-window.addEventListener('hashchange', () => { closeAll(); $$('.dialog').forEach(d => d.remove()); route(); window.scrollTo(0, 0); });
+/* Historial: las 4 secciones principales (y Facturas) son la "raíz": ir a ellas no agrega pasos atrás.
+   Así, deslizar desde el borde para volver nunca da vueltas en círculo: desde una sección principal no hay "atrás". */
+const MAIN = ['home', 'students', 'calendar', 'stats', 'invoices'];
+const viewOf = h => (h.replace(/^#\/?/, '').split('/')[0] || 'home');
+const depth = () => (history.state && history.state.d) || 0;
+let pendingMain = null, lastRouted = null;
+function go(h) {
+  if (!h.startsWith('#')) h = '#' + h;
+  if (location.hash === h || (h === '#/' && !location.hash)) { render(); return; }
+  if (MAIN.includes(viewOf(h))) {
+    if (depth() > 0) { pendingMain = h; history.go(-depth()); return; } // vuelve a la raíz y reemplaza
+    history.replaceState({ d: 0 }, '', h);
+  } else history.pushState({ d: depth() + 1 }, '', h);
+  onRoute();
+}
+function onRoute() {
+  if (location.hash === lastRouted && !pendingMain) return;
+  closeAll(); $$('.dialog').forEach(d => d.remove());
+  lastRouted = location.hash;
+  route(); window.scrollTo(0, 0);
+}
+window.addEventListener('popstate', () => {
+  if (pendingMain) { const h = pendingMain; pendingMain = null; history.replaceState({ d: 0 }, '', h); lastRouted = null; onRoute(); return; }
+  lastRouted = null; onRoute();
+});
+window.addEventListener('hashchange', () => { if (location.hash !== lastRouted) { if (!history.state) history.replaceState({ d: MAIN.includes(viewOf(location.hash)) ? 0 : 1 }, '', location.hash); onRoute(); } });
+if (!history.state) history.replaceState({ d: 0 }, '', location.hash || '#/');
+// "volver": si hay a dónde volver usa el historial; si no, va directo a la sección indicada
+function goBack(fallback) { if (depth() > 0) history.back(); else go(fallback || '#/'); }
 function route() {
   const h = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   R.view = h[0] || 'home'; R.params = h.slice(1);
@@ -185,7 +213,7 @@ const navOn = k => R.view === k || (k === 'home' && (R.view === 'shows' || R.vie
 function shell() {
   return `<nav class="side"><div class="brand"><span class="logo">${ic('wave')}</span>Tesitura</div>
     ${NAV.map(n => `<a href="${n[3]}" class="${navOn(n[0]) ? 'on' : ''}">${ic(n[2])}${n[1]}</a>`).join('')}
-    <a href="#/shows" class="${R.view === 'shows' || R.view === 'show' ? 'on' : ''}">${ic('mic')}Shows</a>
+    <a href="#/shows" class="${R.view === 'shows' || R.view === 'show' ? 'on' : ''}">${ic('curtain')}Shows</a>
     <a href="#/invoices" class="${R.view === 'invoices' ? 'on' : ''}">${ic('file')}Facturas</a>
     <div class="gap"></div>
     <a href="#/settings" class="${R.view === 'settings' || R.view === 'school' ? 'on' : ''}">${ic('gear')}Configuración</a>
@@ -212,6 +240,14 @@ const VIEWS = {}, AFTER = {}, ACT = {};
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]');
   if (a && ACT[a.dataset.act]) { e.preventDefault(); ACT[a.dataset.act](a, e); return; }
+  // los enlaces internos pasan por go() para manejar bien el historial
+  const ln = e.target.closest('a[href^="#/"], a[href="#"]');
+  if (ln && !ln.target) {
+    e.preventDefault();
+    if (ln.classList.contains('back')) goBack(ln.getAttribute('href'));
+    else if (ln.getAttribute('href') !== '#') go(ln.getAttribute('href'));
+    return;
+  }
   const g = e.target.closest('[data-go]');
   if (g) { e.preventDefault(); go(g.dataset.go); }
 });

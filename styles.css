@@ -443,6 +443,8 @@ body.locked .tabbar, body.locked .fab { visibility: hidden; }
 .li.act { gap: 10px; }
 .li.act .ord { width: 22px; text-align: center; font: 650 15px var(--disp); color: var(--tx3); flex: none; font-variant-numeric: tabular-nums; }
 .li.act.done { opacity: .45; }
+.li.act.off .t, .li.act.off .s { color: var(--tx3) !important; text-decoration: line-through; }
+.li.act .pill { min-width: 52px; justify-content: center; height: 26px; }
 .li.act.done .t { text-decoration: line-through; }
 .li.act.now { background: var(--grp-d); }
 .li.act.now .ord { color: var(--grp); }

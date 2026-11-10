@@ -41,68 +41,91 @@ function songChips(sid, o = {}) {
   const t0 = today();
   return `<div class="songline" ${o.style ? `style="${o.style}"` : ''}>${list.map(ss => {
     const sg = byId('songs', ss.songId) || {}, t = semisOf(ss), inShow = showsOfSong(ss.id).some(sh => sh.date >= t0);
-    return `<button class="songchip ${inShow ? 'show' : ''}" data-act="openSong" data-id="${ss.id}">${ic('music', 'sm')}<span>${esc(sg.title || '¿?')}</span>${t ? `<b>${fmtSemis(t)}</b>` : ''}${inShow ? `<i style="color:var(--grp);display:flex">${ic('mic', 'sm')}</i>` : ''}</button>`;
+    return `<button class="songchip ${inShow ? 'show' : ''}" data-act="openSong" data-id="${ss.id}">${ic('music', 'sm')}<span>${esc(sg.title || '¿?')}</span>${t ? `<b>${fmtSemis(t)}</b>` : ''}${inShow ? `<i style="color:var(--grp);display:flex">${ic('curtain', 'sm')}</i>` : ''}</button>`;
   }).join('')}</div>`;
 }
 
 /* ---------- lista de shows ---------- */
+// cada participante tiene al menos una fila (alumno + canción) en el programa
+function ensureRows(sh) {
+  ensurePeople(sh);
+  let changed = false;
+  const first = (showBlocks(sh)[0] || {}).id || '';
+  sh.people.forEach(p => {
+    if (!(sh.acts || []).some(a => (a.studentIds || []).includes(p.studentId))) {
+      sh.acts = sh.acts || [];
+      sh.acts.push({ id: uid(), blockId: first, studentIds: [p.studentId], ssId: '', title: '', notes: '', order: actsOf(sh, first).length + 1 });
+      changed = true;
+    }
+  });
+  if (changed) { upsert('shows', sh); save(false); schedulePush(); }
+}
+const actAttend = (sh, a) => { const at = (a.studentIds || []).map(id => attendOf(sh, id)); return at.length && at.every(x => x === 'yes') ? 'yes' : at.some(x => x === 'no') ? 'no' : 'pending'; };
+
+/* ---------- lista de shows, agrupados por fecha ---------- */
 VIEWS.shows = () => {
   const t = today();
   const up = upcomingShows(), past = S.shows.filter(s => s.date < t).sort((a, b) => b.date.localeCompare(a.date));
-  const row = sh => { ensurePeople(sh); const yes = sh.people.filter(p => p.attend === 'yes').length; return `<a class="li" href="#/show/${sh.id}"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('mic')}</div><div class="grow"><div class="t ell">${esc(sh.title)}</div><div class="s ell">${fmtDate(sh.date, { dow: 1, year: 1 })}${showTimes(sh) ? ' · ' + showTimes(sh) : ''}${sh.venue ? ' · ' + esc(sh.venue) : ''}</div><div class="xs dim">${(sh.acts || []).length} canciones · ${yes}/${sh.people.length} confirmados</div></div>${sh.date >= t ? `<span class="pill group">${daysTo(sh.date)}</span>` : ''}${ic('chevR', 'sm chev')}</a>`; };
+  const row = sh => { ensurePeople(sh); const yes = sh.people.filter(p => p.attend === 'yes').length; return `<a class="li" href="#/show/${sh.id}"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('curtain')}</div><div class="grow"><div class="t ell">${esc(sh.title)}</div><div class="s ell">${showTimes(sh)}${sh.venue ? ' · ' + esc(sh.venue) : ''}</div><div class="xs dim">${(sh.acts || []).filter(a => a.ssId || a.title).length ? (sh.acts || []).length + ' en el programa · ' : ''}${yes}/${sh.people.length} confirmados</div></div>${ic('chevR', 'sm chev')}</a>`; };
+  const byDate = list => { const g = []; list.forEach(sh => { let x = g.find(y => y.d === sh.date); if (!x) g.push(x = { d: sh.date, l: [] }); x.l.push(sh); }); g.forEach(x => x.l.sort((a, b) => ((showBlocks(a)[0] || {}).start || '').localeCompare((showBlocks(b)[0] || {}).start || ''))); return g; };
+  const groups = (list, dim) => byDate(list).map(g => `<div class="group-t row" style="gap:8px"><span class="grow" style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--tx)">${fmtLong(g.d)}</span><span class="pill ${dim ? '' : 'group'}">${daysTo(g.d)}</span></div><div class="list" ${dim ? 'style="opacity:.7"' : ''}>${g.l.map(row).join('')}</div>`).join('');
   return `${topbar('Shows', { back: '#/', right: `<button class="iconbtn acc" data-act="newShow" aria-label="Nuevo show">${ic('plus')}</button>` })}
-    ${up.length ? `<div class="list">${up.map(row).join('')}</div>` : `<div class="empty">${ic('mic')}<div class="t">No hay shows agendados</div><div class="small">Creá un show con su fecha y horarios, sumá a los alumnos que participan y armá el programa.</div><div class="sp"></div><button class="btn pri" data-act="newShow">${ic('plus', 'sm')}Nuevo show</button></div>`}
-    ${past.length ? `<div class="sec"><h2>Anteriores</h2></div><div class="list" style="opacity:.75">${past.map(row).join('')}</div>` : ''}`;
+    ${up.length ? groups(up) : `<div class="empty">${ic('curtain')}<div class="t">No hay shows agendados</div><div class="small">Creá un show con su fecha y horarios y armá el programa: quién canta y qué canción.</div><div class="sp"></div><button class="btn pri" data-act="newShow">${ic('plus', 'sm')}Nuevo show</button></div>`}
+    ${past.length ? `<div class="sec"><h2>Anteriores</h2></div>${groups(past, true)}` : ''}`;
 };
 ACT.newShow = () => showForm(null);
 ACT.openShow = el => go('#/show/' + el.dataset.id);
 
-/* ---------- página del show ---------- */
+/* ---------- página del show: una sola lista, alumno + canción ---------- */
 VIEWS.show = id => {
   const sh = showById(id);
-  if (!sh) return `${topbar('Show', { back: '#/shows' })}<div class="empty">${ic('mic')}<div class="t">No se encontró el show</div></div>`;
-  ensurePeople(sh);
+  if (!sh) return `${topbar('Show', { back: '#/shows' })}<div class="empty">${ic('curtain')}<div class="t">No se encontró el show</div></div>`;
+  ensureRows(sh);
   const t = today(), live = sh.date === t ? showBlocks(sh).find(b => toMin(b.start) <= nowMin() && nowMin() < toMin(blockEnd(sh, b))) : null;
   const yes = sh.people.filter(p => p.attend === 'yes').length, no = sh.people.filter(p => p.attend === 'no').length;
-  const loose = actsOf(sh, '');
-  const blocks = showBlocks(sh);
+  const loose = actsOf(sh, ''), blocks = showBlocks(sh);
   return `${topbar(esc(sh.title), { back: '#/shows', sub: `${fmtLong(sh.date)} · ${daysTo(sh.date)}`, right: `<button class="iconbtn" data-act="editShow" data-id="${sh.id}" aria-label="Editar">${ic('edit')}</button>` })}
-    ${sh.venue || sh.notes ? `<div class="small muted" style="margin:-4px 2px 14px;white-space:pre-wrap">${sh.venue ? ic('pin', 'sm') + ' ' + esc(sh.venue) : ''}${sh.venue && sh.notes ? '\n' : ''}${esc(sh.notes || '')}</div>` : ''}
+    ${sh.venue || sh.notes ? `<div class="small muted" style="margin:-4px 2px 14px;white-space:pre-wrap">${sh.venue ? esc(sh.venue) : ''}${sh.venue && sh.notes ? '\n' : ''}${esc(sh.notes || '')}</div>` : ''}
     ${live ? liveShowCard(sh, live, true) : ''}
-    <div class="stats" style="grid-template-columns:repeat(3,1fr)">
-      <div class="stat"><div class="k">Confirmados</div><div class="v num">${yes}<span class="dim" style="font-size:15px"> / ${sh.people.length}</span></div>${no ? `<div class="h">${no} no van</div>` : ''}</div>
-      <div class="stat"><div class="k">Canciones</div><div class="v num">${(sh.acts || []).length}</div></div>
-      <div class="stat"><div class="k">Horarios</div><div class="v num">${blocks.length}</div></div>
+    <div class="row" style="gap:8px;margin-bottom:6px">
+      <div class="stat grow" style="padding:10px 14px"><div class="k">Confirmados</div><div class="v num" style="font-size:20px;margin-top:2px">${yes}<span class="dim" style="font-size:14px"> / ${sh.people.length}</span>${no ? `<span class="small" style="color:var(--bad);font-weight:500"> · ${no} no van</span>` : ''}</div></div>
+      <button class="btn" style="height:58px" data-act="newAct" data-show="${sh.id}">${ic('plus', 'sm')}Agregar</button>
     </div>
-    <div class="sec"><h2>Programa</h2><button class="lnk small" data-act="newAct" data-show="${sh.id}">+ Agregar canción</button></div>
     ${blocks.map(b => blockHtml(sh, b, live && live.id === b.id)).join('')}
-    ${loose.length || !blocks.length ? `<div class="group-t">${blocks.length ? 'Sin horario asignado' : 'Canciones'}</div>${loose.length ? `<div class="list">${loose.map((a, i) => actRow(sh, a, i, loose.length)).join('')}</div>` : '<div class="card small muted">Todavía no hay canciones en el programa.</div>'}` : ''}
-    <div class="sec"><h2>Participantes</h2><button class="lnk small" data-act="addPeople" data-show="${sh.id}">+ Agregar alumnos</button></div>
-    ${sh.people.length ? `<div class="list">${sh.people.slice().sort((a, b) => sName(student(a.studentId)).localeCompare(sName(student(b.studentId)))).map(p => { const st = student(p.studentId), n = (sh.acts || []).filter(a => (a.studentIds || []).includes(p.studentId)); return `<div class="li av">${avatar(st)}<div class="grow" style="min-width:0"><div class="t ell">${esc(sName(st))}</div><div class="s ell">${n.length ? n.map(a => esc(songLabel(a.ssId, { empty: 'canción a definir' }))).join(' · ') : 'Sin canción asignada'}</div></div>
-      <div class="seg att" style="flex:none">${['yes', 'pending', 'no'].map(k => `<button class="${p.attend === k ? 'on ' + k : ''}" data-act="setAttend" data-show="${sh.id}" data-s="${p.studentId}" data-v="${k}" aria-label="${ATT[k].l}">${k === 'yes' ? ic('check', 'sm') : k === 'no' ? ic('x', 'sm') : '?'}</button>`).join('')}</div></div>`; }).join('')}</div>
-      <div class="hint" style="margin-top:8px">✓ va · ? sin confirmar · ✕ no va. Los que cantan se agregan solos al sumar sus canciones al programa.</div>` : `<div class="card small muted">Agregá a los alumnos que participan para ir confirmando asistencia.</div>`}`;
+    ${loose.length ? `<div class="group-t">Sin horario asignado</div><div class="list">${loose.map((a, i) => actRow(sh, a, i, loose.length)).join('')}</div>` : ''}
+    ${!(sh.acts || []).length ? `<div class="card small muted" style="margin-top:12px">Todavía no hay nadie en el programa. Tocá <b>Agregar</b> para sumar alumnos con su canción.</div>` : ''}
+    <button class="btn sm ghost full" style="margin-top:12px;border:1px dashed var(--line2)" data-act="addPeople" data-show="${sh.id}">${ic('users', 'sm')}Agregar varios alumnos a la vez</button>
+    <div class="hint" style="margin-top:10px">Tocá el estado (Va · ? · No va) para cambiar la asistencia. Tocá el nombre para cambiar la canción o el horario.</div>`;
 };
 function blockHtml(sh, b, isLive) {
   const acts = actsOf(sh, b.id);
-  return `<div class="group-t row" style="gap:8px">${isLive ? '<span class="livedot"></span>' : ''}<span class="grow">${b.start}–${blockEnd(sh, b)}${b.title ? ' · ' + esc(b.title) : ''}</span><button class="mini" data-act="newAct" data-show="${sh.id}" data-block="${b.id}">${ic('plus', 'sm')}</button></div>
-    ${acts.length ? `<div class="list">${acts.map((a, i) => actRow(sh, a, i, acts.length, isLive)).join('')}</div>` : `<div class="card small muted">Sin canciones en este horario.</div>`}`;
+  return `<div class="group-t row" style="gap:8px">${isLive ? '<span class="livedot"></span>' : ''}<span class="grow">${b.start}–${blockEnd(sh, b)}${b.title ? ' · ' + esc(b.title) : ''}</span><span class="dim" style="text-transform:none;letter-spacing:0">${acts.length}</span></div>
+    ${acts.length ? `<div class="list">${acts.map((a, i) => actRow(sh, a, i, acts.length, isLive)).join('')}</div>` : `<div class="card small muted">Nadie en este horario todavía.</div>`}`;
 }
 function actRow(sh, a, i, n, isLive) {
-  const ids = a.studentIds || [], absent = ids.some(id => attendOf(sh, id) === 'no'), pend = ids.some(id => attendOf(sh, id) === 'pending');
+  const ids = a.studentIds || [], at = actAttend(sh, a);
   const next = isLive && !a.done && actsOf(sh, a.blockId).find(x => !x.done) === a;
-  return `<div class="li act ${a.done ? 'done' : ''} ${next ? 'now' : ''}">
+  const song = a.ssId ? songLabel(a.ssId) : (a.title && a.title !== 'Canción a definir' ? a.title : '');
+  return `<div class="li act ${a.done ? 'done' : ''} ${next ? 'now' : ''} ${at === 'no' ? 'off' : ''}">
     <div class="ord">${i + 1}</div>
-    <div class="row" style="gap:0">${ids.slice(0, 2).map((s, k) => `<div style="margin-left:${k ? -12 : 0}px">${avatar(student(s), 'sm')}</div>`).join('')}</div>
-    <button class="grow" style="text-align:left;min-width:0" data-act="editAct" data-show="${sh.id}" data-a="${a.id}"><div class="t ell">${esc(songLabel(a.ssId, { empty: a.title || 'Canción a definir' }))}</div><div class="s ell">${esc(ids.map(s => sName(student(s))).join(', ') || 'Sin alumnos')}${absent ? ' · <span style="color:var(--bad)">no va</span>' : pend ? ' · <span class="dim">sin confirmar</span>' : ''}${next ? ' · <b style="color:var(--acc)">ahora</b>' : ''}</div></button>
+    <button class="grow" style="text-align:left;min-width:0" data-act="editAct" data-show="${sh.id}" data-a="${a.id}">
+      <div class="t ell">${esc(ids.map(s => sName(student(s))).join(' y ') || 'Sin alumnos')}${next ? ' <span style="color:var(--grp);font-weight:600;font-size:12px">· AHORA</span>' : ''}</div>
+      <div class="s ell" style="color:${song ? 'var(--tx2)' : 'var(--tx3)'}">${song ? '♪ ' + esc(song) : 'Canción a definir'}</div></button>
+    <button class="pill att-${at} ${ATT[at].c}" data-act="cycleAttend" data-show="${sh.id}" data-a="${a.id}" style="flex:none">${ATT[at].s}</button>
     ${isLive ? `<button class="mini ${a.done ? 'ok' : ''}" data-act="actDone" data-show="${sh.id}" data-a="${a.id}" aria-label="Ya cantó">${ic('check', 'sm')}</button>` : `<div class="ordbtns"><button data-act="moveAct" data-show="${sh.id}" data-a="${a.id}" data-d="-1" ${i ? '' : 'disabled'} aria-label="Subir">${ic('chevD', 'sm')}</button><button data-act="moveAct" data-show="${sh.id}" data-a="${a.id}" data-d="1" ${i < n - 1 ? '' : 'disabled'} aria-label="Bajar">${ic('chevD', 'sm')}</button></div>`}
   </div>`;
 }
-// tarjeta del show en curso (en Inicio y en la página del show)
+ACT.cycleAttend = el => {
+  const sh = showById(el.dataset.show), a = sh.acts.find(x => x.id === el.dataset.a); ensurePeople(sh);
+  const nextAt = { pending: 'yes', yes: 'no', no: 'pending' }[actAttend(sh, a)];
+  (a.studentIds || []).forEach(id => { const p = sh.people.find(x => x.studentId === id); if (p) p.attend = nextAt; });
+  upsert('shows', sh); save(); render();
+};
 function liveShowCard(sh, b, inPage) {
   const acts = actsOf(sh, b.id), nowA = acts.find(a => !a.done), after = nowA ? acts.slice(acts.indexOf(nowA) + 1).filter(a => !a.done) : [];
   const who = a => esc((a.studentIds || []).map(s => sName(student(s))).join(', '));
   return `<div class="nowcard group" ${inPage ? '' : `data-act="openShow" data-id="${sh.id}" role="button" tabindex="0"`} style="margin-bottom:${inPage ? 14 : 0}px">
-    <div class="row"><span class="keytag" style="background:var(--grp-d);color:var(--grp);min-width:40px;height:40px">${ic('mic')}</span><div class="grow"><div class="t ell" style="font-weight:600;font-size:16px">${esc(sh.title)}</div><div class="small muted">${b.start}–${blockEnd(sh, b)}${b.title ? ' · ' + esc(b.title) : ''} · ${acts.filter(a => a.done).length}/${acts.length} cantaron</div></div>${inPage ? '' : ic('chevR', 'sm chev')}</div>
+    <div class="row"><span class="keytag" style="background:var(--grp-d);color:var(--grp);min-width:40px;height:40px">${ic('curtain')}</span><div class="grow"><div class="t ell" style="font-weight:600;font-size:16px">${esc(sh.title)}</div><div class="small muted">${b.start}–${blockEnd(sh, b)}${b.title ? ' · ' + esc(b.title) : ''} · ${acts.filter(a => a.done).length}/${acts.length} cantaron</div></div>${inPage ? '' : ic('chevR', 'sm chev')}</div>
     ${nowA ? `<div style="margin-top:12px"><div class="xs" style="color:var(--grp);font-weight:600;text-transform:uppercase;letter-spacing:.06em">Ahora</div><div style="font-weight:600;font-size:17px">${who(nowA)}</div><div class="small muted">${esc(songLabel(nowA.ssId, { empty: nowA.title || 'Canción a definir' }))}</div></div>
       ${after.length ? `<div class="small muted" style="margin-top:10px">Después: ${after.slice(0, 4).map(a => who(a) + ' (' + esc(songLabel(a.ssId, { empty: a.title || '—' })) + ')').join(' → ')}${after.length > 4 ? ' …' : ''}</div>` : '<div class="small muted" style="margin-top:8px">Es la última de este horario.</div>'}
       ${inPage ? '' : `<button class="btn sm full" style="margin-top:12px" data-act="actDone" data-show="${sh.id}" data-a="${nowA.id}">${ic('check', 'sm')}Ya cantó · pasar a la siguiente</button>`}` : `<div class="small muted" style="margin-top:10px">${acts.length ? 'Ya cantaron todos los de este horario.' : 'No hay canciones cargadas en este horario.'}</div>`}
@@ -129,11 +152,11 @@ ACT.addPeople = el => {
   const sh = showById(el.dataset.show); ensurePeople(sh);
   const sel = new Set();
   openSheet({
-    title: 'Agregar participantes',
+    title: 'Agregar alumnos al show',
     body: () => { const pool = S.students.filter(s => s.status === 'active' && !sh.people.some(p => p.studentId === s.id)).sort((a, b) => sName(a).localeCompare(sName(b))); return pool.length ? `<div class="muted small" style="margin:-4px 0 12px">Tocá los alumnos que participan.</div><div class="chips" style="flex-wrap:wrap">${pool.map(s => `<button type="button" class="chip acc ${sel.has(s.id) ? 'on' : ''}" data-s="${s.id}">${esc(sName(s))}</button>`).join('')}</div><div class="sp"></div><button class="btn pri full" data-save>${ic('check', 'sm')}Agregar</button>` : '<div class="muted">Ya están todos tus alumnos activos.</div>'; },
     mount: (e, shh) => {
       e.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { sel.has(b.dataset.s) ? sel.delete(b.dataset.s) : sel.add(b.dataset.s); b.classList.toggle('on'); });
-      const s = e.querySelector('[data-save]'); if (s) s.onclick = () => { if (!sel.size) return toast('Elegí al menos un alumno', 'err'); sel.forEach(id => sh.people.push({ studentId: id, attend: 'pending' })); upsert('shows', sh); save(); shh.close(); render(); toast(sel.size + ' agregado' + (sel.size > 1 ? 's' : '')); };
+      const s = e.querySelector('[data-save]'); if (s) s.onclick = () => { if (!sel.size) return toast('Elegí al menos un alumno', 'err'); sel.forEach(id => sh.people.push({ studentId: id, attend: 'pending' })); ensureRows(sh); upsert('shows', sh); save(); shh.close(); render(); toast(sel.size + ' agregado' + (sel.size > 1 ? 's' : '')); };
     }
   });
 };
@@ -179,7 +202,7 @@ function actForm(sh, a, o = {}) {
   const F = a ? clone(a) : { id: uid(), blockId: o.blockId ?? ((showBlocks(sh)[0] || {}).id || ''), studentIds: o.studentIds || [], ssId: o.ssId || '', title: '', notes: '' };
   let q = '', newSong = '';
   openSheet({
-    title: a ? 'Canción del show' : 'Agregar al programa',
+    title: a ? 'Alumno y canción' : 'Agregar al show',
     body: () => {
       const nq = norm(q);
       const pool = S.students.filter(s => s.status === 'active' && !F.studentIds.includes(s.id) && (!nq || norm(sName(s)).includes(nq))).sort((x, y) => sName(x).localeCompare(sName(y))).slice(0, nq ? 20 : 10);
@@ -194,7 +217,7 @@ function actForm(sh, a, o = {}) {
         ${showBlocks(sh).length ? field('Horario', sel('blockId', F.blockId, [['', 'Sin horario asignado'], ...showBlocks(sh).map(b => [b.id, `${b.start}–${blockEnd(sh, b)}${b.title ? ' · ' + b.title : ''}`])])) : ''}
         ${field('Notas (opcional)', txa('notes', F.notes, 'Ej: entra con micrófono de mano, pista en pendrive', 2))}
         <button class="btn pri full" data-save>${ic('check', 'sm')}Guardar</button>
-        ${a ? `<button class="btn ghost danger full" style="margin-top:6px" data-del>${ic('trash', 'sm')}Quitar del programa</button>` : ''}`;
+        ${a ? `<button class="btn ghost danger full" style="margin-top:6px" data-del>${ic('trash', 'sm')}Quitar del show</button>` : ''}`;
     },
     mount: (el, s2) => {
       const grab = () => { const b = fval(el, 'blockId'); if (b !== undefined) F.blockId = b; F.notes = fval(el, 'notes'); const n = el.querySelector('[name=newsong]'); if (n) newSong = n.value; const qi = el.querySelector('[name=q]'); if (qi) q = qi.value; };
@@ -215,13 +238,16 @@ function actForm(sh, a, o = {}) {
         }
         sh.acts = sh.acts || [];
         const i = sh.acts.findIndex(x => x.id === F.id);
-        if (i < 0) { F.order = actsOf(sh, F.blockId).length + 1; sh.acts.push(F); }
+        // si el alumno ya estaba en el show sin canción, se completa esa misma fila en vez de agregar otra
+        const empty = i < 0 && (F.ssId || F.title) ? sh.acts.find(x => !x.ssId && (!x.title || x.title === 'Canción a definir') && (x.studentIds || []).length === F.studentIds.length && F.studentIds.every(id => x.studentIds.includes(id))) : null;
+        if (empty) { Object.assign(empty, { ssId: F.ssId, title: F.title, notes: F.notes || empty.notes }); if ((empty.blockId || '') !== (F.blockId || '')) { empty.blockId = F.blockId; empty.order = actsOf(sh, F.blockId).length + 1; } }
+        else if (i < 0) { F.order = actsOf(sh, F.blockId).length + 1; sh.acts.push(F); }
         else { if ((sh.acts[i].blockId || '') !== (F.blockId || '')) F.order = actsOf(sh, F.blockId).length + 1; sh.acts[i] = F; }
         ensurePeople(sh);
         upsert('shows', sh); save(); s2.close(); render(); if (o.after) o.after(); toast(a ? 'Guardado' : 'Agregada al programa de ' + sh.title);
       };
       const d = el.querySelector('[data-del]');
-      if (d) d.onclick = async () => { if (!(await confirmDel('¿Quitar esta canción del programa?', 'El alumno sigue en la lista de participantes.', 'Quitar'))) return; sh.acts = sh.acts.filter(x => x.id !== a.id); actsOf(sh, a.blockId).forEach((x, k) => { x.order = k + 1; }); upsert('shows', sh); save(); s2.close(); render(); };
+      if (d) d.onclick = async () => { if (!(await confirmDel('¿Quitar del show?', 'Se quita esta fila del programa. El repertorio del alumno no se toca.', 'Quitar'))) return; sh.acts = sh.acts.filter(x => x.id !== a.id); sh.people = (sh.people || []).filter(p => sh.acts.some(x => (x.studentIds || []).includes(p.studentId))); actsOf(sh, a.blockId).forEach((x, k) => { x.order = k + 1; }); upsert('shows', sh); save(); s2.close(); render(); };
     }
   });
 }
@@ -349,6 +375,8 @@ function runImport(d, times, opt) {
         ssId = ss.id;
       }
       const exists = (sh.acts || []).some(a => (a.studentIds || []).includes(st.id) && (ssId ? a.ssId === ssId : !a.ssId));
+      const emptyRow = ssId && !exists ? (sh.acts || []).find(a => (a.studentIds || []).length === 1 && a.studentIds[0] === st.id && !a.ssId) : null;
+      if (emptyRow) { emptyRow.ssId = ssId; emptyRow.title = ''; continue; }
       if (!exists) { sh.acts = sh.acts || []; sh.acts.push({ id: uid(), blockId, studentIds: [st.id], ssId, title: ssId ? '' : 'Canción a definir', notes: '', order: actsOf(sh, blockId).length + 1 }); cnt.acts++; }
     }
     upsert('shows', sh); cnt.shows++;
