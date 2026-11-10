@@ -14,7 +14,7 @@ VIEWS.home = () => {
   const h = new Date().getHours();
   const name = (S.settings.teacher || '').split(' ')[0];
   const nextL = todays.find(l => !isEvent(l) && l.status === 'scheduled' && toMin(l.start) >= nowMin() && toMin(l.start) - nowMin() <= 120);
-  const projTxt = fmtMoneyMap(proj, '');
+  const projTxt = Object.values(proj).some(Boolean) ? moneyTotal(proj) : '';
   const multi = activeSchools().length > 1;
   // ¿hay un mes anterior sin facturar?
   const pm = monthStart(addMonths(t, -1));
@@ -24,7 +24,7 @@ VIEWS.home = () => {
   })}
     ${nextL ? `<button class="banner" style="width:100%;text-align:left" data-act="openLesson" data-id="${nextL.id}">${avatar(student(nextL.studentIds[0]))}<div class="grow"><div class="small" style="color:var(--acc);font-weight:600">En ${fmtDur(toMin(nextL.start) - nowMin())}</div><div style="font-weight:600" class="ell">${esc(lessonTitle(nextL))} · ${nextL.start}</div><div class="small muted">Tocá para ver el resumen antes de la clase</div></div>${ic('chevR', 'sm')}</button>` : ''}
     <div class="stats">
-      <div class="stat hero"><div class="k">${ic('coin', 'sm')}Generado en ${MON_L[parseD(t).getMonth()]}</div><div class="v num">${fmtMoneyMap(sum.income)}</div>
+      <div class="stat hero"><div class="k">${ic('coin', 'sm')}Generado en ${MON_L[parseD(t).getMonth()]}</div><div class="v num">${moneyTotal(sum.income)}</div>${moneyDetail(sum.income) ? `<div class="h">${multi ? 'Convertido a pesos · ' + fxNote() : moneyDetail(sum.income)}</div>` : ''}
         ${multi ? `<div class="row wrap small muted" style="gap:4px 14px;margin-top:8px">${activeSchools().map(sc => { const x = summarize(ms, me, sc.id); return `<span class="row" style="gap:6px">${schoolDot(sc)}${esc(sc.name)} <b class="num" style="color:var(--tx);font-weight:600">${fmtMoneyMap(x.income, money(0, sc.currency))}</b></span>`; }).join('')}</div>` : ''}
         ${S.settings.projection && projTxt ? `<div class="proj">${ic('target', 'sm')}<span>Proyectado hasta fin de mes: <b class="num">+ ${projTxt}</b></span><span class="dim">(clases agendadas, aún no cuentan)</span></div>` : ''}</div>
       <div class="stat"><div class="k">${ic('clock', 'sm')}Horas dictadas</div><div class="v num">${fmtHours(sum.minutes)}</div><div class="h">${sum.minGrp ? fmtHours(sum.minInd) + ' ind. · ' + fmtHours(sum.minGrp) + ' grup.' : 'este mes'}</div></div>

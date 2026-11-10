@@ -38,7 +38,10 @@ VIEWS.settings = () => {
 
     <div class="group-t">Ingresos</div>
     <div class="list">${sw('projection', st.projection, 'Mostrar proyección', 'Estima lo que podés generar con las clases agendadas')}</div>
-    <div class="card" style="margin-top:8px">${field('Moneda para escuelas nuevas', `<select class="inp" data-set="currency">${CURRENCIES.map(c => `<option value="${c[0]}" ${st.currency === c[0] ? 'selected' : ''}>${c[1]}</option>`).join('')}</select>`)}</div>
+    <div class="list" style="margin-top:8px">${sw('fxConvert', st.fxConvert !== false, 'Convertir los totales a ' + (st.currency || 'UYU'), 'El total del mes y la proyección suman todas las escuelas con la cotización del día')}
+      ${st.fxConvert !== false ? `<div class="li"><div class="grow"><div class="t">Cotización del dólar</div><div class="s">${fxRate('USD') != null ? fxNote() + (+st.fxManual > 0 ? '' : ' · se actualiza sola') : 'Todavía no se pudo obtener'}</div></div><button class="mini" data-act="fxRefresh">${ic('repeat', 'sm')}Actualizar</button></div>
+      <div class="li"><div class="grow"><div class="t">Usar una cotización fija</div><div class="s">Opcional. Dejalo vacío para usar la del día</div></div><input class="inp" style="width:110px;min-height:38px;padding:6px 10px" type="number" step="0.01" min="0" inputmode="decimal" data-set="fxManual" value="${esc(st.fxManual || '')}" placeholder="Ej: 40,5"></div>` : ''}</div>
+    <div class="card" style="margin-top:8px">${field('Moneda principal (y de escuelas nuevas)', `<select class="inp" data-set="currency">${CURRENCIES.map(c => `<option value="${c[0]}" ${st.currency === c[0] ? 'selected' : ''}>${c[1]}</option>`).join('')}</select>`)}</div>
 
     <div class="group-t">Recordatorios</div>
     <div class="list">${sw('remind', st.remind, 'Avisarme antes de cada clase', 'Funciona mientras la app está abierta')}
@@ -70,7 +73,7 @@ AFTER.settings = m => {
     if ((k === 'dayStart' || k === 'dayEnd') && toMin(S.settings.dayStart) >= toMin(S.settings.dayEnd) && false) return;
     S.settings[k] = v; S.settings.u = Date.now(); save();
     if (k === 'dayEnd' && toMin(S.settings.dayEnd) <= toMin(S.settings.dayStart)) { toast('El fin tiene que ser posterior al inicio', 'err'); S.settings.dayEnd = '22:00'; save(); render(); return; }
-    if (['remindMin'].includes(k)) render();
+    if (['remindMin', 'fxManual', 'currency'].includes(k)) render();
     toast('Guardado');
   }));
   m.querySelectorAll('.switch input').forEach(el => el.addEventListener('change', async () => {
@@ -93,6 +96,7 @@ AFTER.settings = m => {
     rf.value = '';
   };
 };
+ACT.fxRefresh = () => loadFx(true);
 ACT.setOpt = el => { S.settings[el.dataset.k] = el.dataset.v; S.settings.u = Date.now(); save(); render(); };
 ACT.delHour = el => { const hs = S.settings.hours.sort((a, b) => (mod(a.d - 1, 7) - mod(b.d - 1, 7)) || a.start.localeCompare(b.start)); hs.splice(+el.dataset.i, 1); S.settings.u = Date.now(); save(); render(); };
 ACT.addHour = () => openSheet({

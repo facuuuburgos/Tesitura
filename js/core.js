@@ -54,13 +54,72 @@ function money(n, cur = 'UYU') {
 const addMoney = (acc, cur, n) => { acc[cur] = (acc[cur] || 0) + n; return acc; };
 const fmtMoneyMap = (m, empty) => { const k = Object.keys(m).filter(c => m[c]); return k.length ? k.map(c => money(m[c], c)).join(' · ') : (empty ?? money(0, S.settings.currency || 'UYU')); };
 
+/* ---------- cotización del dólar (se guarda en este dispositivo y se renueva cada 6 horas) ---------- */
+const FXKEY = 'tesitura.fx';
+let FX = null;
+try { FX = JSON.parse(localStorage.getItem(FXKEY) || 'null'); } catch (e) { }
+let fxLoading = false;
+async function loadFx(force) {
+  if (fxLoading || (!force && FX && Date.now() - FX.at < 6 * 3600e3)) return;
+  fxLoading = true;
+  let next = null;
+  try {
+    const j = await (await fetch('https://open.er-api.com/v6/latest/USD')).json();
+    if (j.result !== 'success' || !j.rates || !j.rates.UYU) throw new Error('sin datos');
+    next = { rates: j.rates, date: ymd(new Date(j.time_last_update_unix * 1000)), at: Date.now() };
+  } catch (e) {
+    try { // respaldo
+      const j = await (await fetch('https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json')).json();
+      const rates = {}; Object.keys(j.usd || {}).forEach(k => { rates[k.toUpperCase()] = j.usd[k]; });
+      if (!rates.UYU) throw new Error('sin datos');
+      next = { rates, date: j.date, at: Date.now() };
+    } catch (e2) { }
+  }
+  fxLoading = false;
+  if (!next) { if (force) toast('No se pudo obtener la cotización (¿sin conexión?)', 'err'); return; }
+  FX = next; localStorage.setItem(FXKEY, JSON.stringify(FX));
+  if (typeof render === 'function' && !document.querySelector('.sheet.open')) { const y = window.scrollY; render(); window.scrollTo(0, y); }
+  if (force) toast('Cotización actualizada');
+}
+const baseCur = () => S.settings.currency || 'UYU';
+// cuántos pesos (moneda principal) vale 1 unidad de la moneda c
+function fxRate(c) {
+  const b = baseCur();
+  if (c === b) return 1;
+  if (c === 'USD' && b === 'UYU' && +S.settings.fxManual > 0) return +S.settings.fxManual;
+  if (!FX || !FX.rates || !FX.rates[c] || !FX.rates[b]) return null;
+  return FX.rates[b] / FX.rates[c];
+}
+function toBase(m) {
+  let t = 0;
+  for (const c of Object.keys(m)) { if (!m[c]) continue; const r = fxRate(c); if (r == null) return null; t += m[c] * r; }
+  return t;
+}
+const needsConv = m => S.settings.fxConvert !== false && Object.keys(m).some(c => m[c] && c !== baseCur());
+// texto de la cotización usada, ej: "dólar a $ 40,12 · 9 nov"
+function fxNote() {
+  const r = fxRate('USD');
+  if (r == null || baseCur() === 'USD') return '';
+  const manual = baseCur() === 'UYU' && +S.settings.fxManual > 0;
+  return `dólar a ${money(Math.round(r * 100) / 100, baseCur())}${manual ? ' (fija)' : FX && FX.date ? ' · ' + fmtDate(FX.date) : ''}`;
+}
+// total convertido a pesos; si no hay cotización, muestra cada moneda por separado
+function moneyTotal(m, empty) {
+  if (needsConv(m)) { const t = toBase(m); if (t != null) return money(Math.round(t), baseCur()); }
+  return fmtMoneyMap(m, empty);
+}
+function moneyDetail(m) {
+  if (!needsConv(m) || toBase(m) == null) return '';
+  return `${fmtMoneyMap(m)} · ${fxNote()}`;
+}
+
 /* ---------- estado ---------- */
 function blank() {
   return {
     v: 1, updatedAt: 0, lastSync: 0, deleted: [],
     settings: {
       u: 0, teacher: '', email: '', ig: '', notation: 'en', accidentals: 'auto', currency: 'UYU', weekStart: 1,
-      dayStart: '08:00', dayEnd: '22:00', defDur: 60, defView: 'week', projection: true, remind: false, remindMin: 15,
+      dayStart: '08:00', dayEnd: '22:00', defDur: 60, defView: 'week', projection: true, fxConvert: true, fxManual: '', remind: false, remindMin: 15,
       hours: [], // horarios habituales [{d:2,start:'16:00',end:'20:00'}]
     },
     schools: [defaultSchool()],

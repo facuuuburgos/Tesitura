@@ -20,7 +20,7 @@ const perHour = (inc, min) => { const o = {}; Object.keys(inc).forEach(c => { if
 VIEWS.stats = () => {
   const [a, b] = statRange(), sid = UI.statSchool, s = summarize(a, b, sid), t = today();
   const proj = S.settings.projection && b >= t ? projection(b, sid) : {};
-  const projTxt = fmtMoneyMap(proj, '');
+  const projTxt = Object.values(proj).some(Boolean) ? moneyTotal(proj) : '';
   const per = UI.statPer;
   const multi = activeSchools().length > 1;
   // evolución: 12 meses (o 10 semanas en vista semanal)
@@ -38,7 +38,7 @@ VIEWS.stats = () => {
       : `<div class="calnav"><button class="iconbtn" data-act="statNav" data-n="-1">${ic('chevL', 'sm')}</button><div class="ttl center">${rangeLabel(a, b)}</div><button class="iconbtn" data-act="statNav" data-n="1">${ic('chevR', 'sm')}</button></div>`}
     ${multi ? `<div class="chips" style="margin-bottom:14px"><button class="chip ${!sid ? 'on' : ''}" data-act="statSchool" data-v="">Todas</button>${activeSchools().map(x => `<button class="chip ${sid === x.id ? 'on' : ''}" data-act="statSchool" data-v="${x.id}">${schoolDot(x)}${esc(x.name)}</button>`).join('')}</div>` : ''}
     <div class="stats">
-      <div class="stat hero"><div class="k">${ic('coin', 'sm')}Ingresos generados</div><div class="v num">${fmtMoneyMap(s.income)}</div>
+      <div class="stat hero"><div class="k">${ic('coin', 'sm')}Ingresos generados</div><div class="v num">${moneyTotal(s.income)}</div>${moneyDetail(s.income) ? `<div class="h">${moneyDetail(s.income)}</div>` : ''}
         ${s.chargedNotDone ? `<div class="h">Incluye ${fmtMoneyMap(s.incOther)} de ${s.chargedNotDone} ausencia${s.chargedNotDone > 1 ? 's' : ''}/cancelación${s.chargedNotDone > 1 ? 'es' : ''} que se cobran según la escuela</div>` : ''}
         ${projTxt ? `<div class="proj">${ic('target', 'sm')}<span>Proyectado: <b class="num">+ ${projTxt}</b></span><span class="dim">(${s.scheduled} clase${s.scheduled === 1 ? '' : 's'} agendada${s.scheduled === 1 ? '' : 's'}, no es ingreso real)</span></div>` : ''}</div>
       <div class="stat"><div class="k">${ic('clock', 'sm')}Horas trabajadas</div><div class="v num">${fmtHours(s.minutes)}</div><div class="h">${s.done ? 'promedio ' + fmtDur(s.minutes / s.done) + ' por clase' : 'en clases realizadas'}</div></div>
