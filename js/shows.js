@@ -66,7 +66,7 @@ const actAttend = (sh, a) => { const at = (a.studentIds || []).map(id => attendO
 VIEWS.shows = () => {
   const t = today();
   const up = upcomingShows(), past = S.shows.filter(s => s.date < t).sort((a, b) => b.date.localeCompare(a.date));
-  const row = sh => { ensurePeople(sh); const yes = sh.people.filter(p => p.attend === 'yes').length; return `<a class="li" href="#/show/${sh.id}"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('curtain')}</div><div class="grow"><div class="t ell">${esc(sh.title)}</div><div class="s ell">${showTimes(sh)}${sh.venue ? ' · ' + esc(sh.venue) : ''}</div><div class="xs dim">${(sh.acts || []).filter(a => a.ssId || a.title).length ? (sh.acts || []).length + ' en el programa · ' : ''}${yes}/${sh.people.length} confirmados</div></div>${ic('chevR', 'sm chev')}</a>`; };
+  const row = sh => { ensurePeople(sh); const yes = sh.people.filter(p => p.attend === 'yes').length; return `<a class="li" href="#/show/${sh.id}"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('curtain')}</div><div class="grow"><div class="t ell">${esc(sh.title)}</div><div class="s ell">${showTimes(sh)}${sh.venue ? ' · ' + esc(sh.venue) : ''}</div><div class="xs dim">${(sh.acts || []).filter(a => a.ssId || a.title).length ? (sh.acts || []).length + ' en el programa · ' : ''}${sh.people.length} alumno${sh.people.length === 1 ? '' : 's'}</div></div>${ic('chevR', 'sm chev')}</a>`; };
   const byDate = list => { const g = []; list.forEach(sh => { let x = g.find(y => y.d === sh.date); if (!x) g.push(x = { d: sh.date, l: [] }); x.l.push(sh); }); g.forEach(x => x.l.sort((a, b) => ((showBlocks(a)[0] || {}).start || '').localeCompare((showBlocks(b)[0] || {}).start || ''))); return g; };
   const groups = (list, dim) => byDate(list).map(g => `<div class="group-t row" style="gap:8px"><span class="grow" style="text-transform:none;letter-spacing:0;font-size:14px;color:var(--tx)">${fmtLong(g.d)}</span><span class="pill ${dim ? '' : 'group'}">${daysTo(g.d)}</span></div><div class="list" ${dim ? 'style="opacity:.7"' : ''}>${g.l.map(row).join('')}</div>`).join('');
   return `${topbar('Shows', { back: '#/', right: `<button class="iconbtn acc" data-act="newShow" aria-label="Nuevo show">${ic('plus')}</button>` })}
@@ -82,20 +82,19 @@ VIEWS.show = id => {
   if (!sh) return `${topbar('Show', { back: '#/shows' })}<div class="empty">${ic('curtain')}<div class="t">No se encontró el show</div></div>`;
   ensureRows(sh);
   const t = today(), live = sh.date === t ? showBlocks(sh).find(b => toMin(b.start) <= nowMin() && nowMin() < toMin(blockEnd(sh, b))) : null;
-  const yes = sh.people.filter(p => p.attend === 'yes').length, no = sh.people.filter(p => p.attend === 'no').length;
-  const loose = actsOf(sh, ''), blocks = showBlocks(sh);
+    const loose = actsOf(sh, ''), blocks = showBlocks(sh);
   return `${topbar(esc(sh.title), { back: '#/shows', sub: `${fmtLong(sh.date)} · ${daysTo(sh.date)}`, right: `<button class="iconbtn" data-act="editShow" data-id="${sh.id}" aria-label="Editar">${ic('edit')}</button>` })}
     ${sh.venue || sh.notes ? `<div class="small muted" style="margin:-4px 2px 14px;white-space:pre-wrap">${sh.venue ? esc(sh.venue) : ''}${sh.venue && sh.notes ? '\n' : ''}${esc(sh.notes || '')}</div>` : ''}
     ${live ? liveShowCard(sh, live, true) : ''}
     <div class="row" style="gap:8px;margin-bottom:6px">
-      <div class="stat grow" style="padding:10px 14px"><div class="k">Confirmados</div><div class="v num" style="font-size:20px;margin-top:2px">${yes}<span class="dim" style="font-size:14px"> / ${sh.people.length}</span>${no ? `<span class="small" style="color:var(--bad);font-weight:500"> · ${no} no van</span>` : ''}</div></div>
+      <div class="stat grow" style="padding:10px 14px"><div class="k">Anotados</div><div class="v num" style="font-size:20px;margin-top:2px">${sh.people.length}<span class="dim" style="font-size:14px"> alumno${sh.people.length === 1 ? '' : 's'} · ${(n => n + (n === 1 ? ' canción' : ' canciones'))((sh.acts || []).filter(a => a.ssId).length)}</span></div></div>
       <button class="btn" style="height:58px" data-act="newAct" data-show="${sh.id}">${ic('plus', 'sm')}Agregar</button>
     </div>
     ${blocks.map(b => blockHtml(sh, b, live && live.id === b.id)).join('')}
     ${loose.length ? `<div class="group-t">Sin horario asignado</div><div class="list">${loose.map((a, i) => actRow(sh, a, i, loose.length)).join('')}</div>` : ''}
     ${!(sh.acts || []).length ? `<div class="card small muted" style="margin-top:12px">Todavía no hay nadie en el programa. Tocá <b>Agregar</b> para sumar alumnos con su canción.</div>` : ''}
     <button class="btn sm ghost full" style="margin-top:12px;border:1px dashed var(--line2)" data-act="addPeople" data-show="${sh.id}">${ic('users', 'sm')}Agregar varios alumnos a la vez</button>
-    <div class="hint" style="margin-top:10px">Tocá el estado (Va · ? · No va) para cambiar la asistencia. Tocá el nombre para cambiar la canción o el horario.</div>`;
+    <div class="hint" style="margin-top:10px">Tocá el nombre para cambiar la canción o el horario.</div>`;
 };
 function blockHtml(sh, b, isLive) {
   const acts = actsOf(sh, b.id);
@@ -103,15 +102,14 @@ function blockHtml(sh, b, isLive) {
     ${acts.length ? `<div class="list">${acts.map((a, i) => actRow(sh, a, i, acts.length, isLive)).join('')}</div>` : `<div class="card small muted">Nadie en este horario todavía.</div>`}`;
 }
 function actRow(sh, a, i, n, isLive) {
-  const ids = a.studentIds || [], at = actAttend(sh, a);
+  const ids = a.studentIds || [];
   const next = isLive && !a.done && actsOf(sh, a.blockId).find(x => !x.done) === a;
   const song = a.ssId ? songLabel(a.ssId) : (a.title && a.title !== 'Canción a definir' ? a.title : '');
-  return `<div class="li act ${a.done ? 'done' : ''} ${next ? 'now' : ''} ${at === 'no' ? 'off' : ''}">
+  return `<div class="li act ${a.done ? 'done' : ''} ${next ? 'now' : ''}">
     <div class="ord">${i + 1}</div>
     <button class="grow" style="text-align:left;min-width:0" data-act="editAct" data-show="${sh.id}" data-a="${a.id}">
       <div class="t ell">${esc(ids.map(s => sName(student(s))).join(' y ') || 'Sin alumnos')}${next ? ' <span style="color:var(--grp);font-weight:600;font-size:12px">· AHORA</span>' : ''}</div>
       <div class="s ell" style="color:${song ? 'var(--tx2)' : 'var(--tx3)'}">${song ? '♪ ' + esc(song) : 'Canción a definir'}</div></button>
-    <button class="pill att-${at} ${ATT[at].c}" data-act="cycleAttend" data-show="${sh.id}" data-a="${a.id}" style="flex:none">${ATT[at].s}</button>
     ${isLive ? `<button class="mini ${a.done ? 'ok' : ''}" data-act="actDone" data-show="${sh.id}" data-a="${a.id}" aria-label="Ya cantó">${ic('check', 'sm')}</button>` : `<div class="ordbtns"><button data-act="moveAct" data-show="${sh.id}" data-a="${a.id}" data-d="-1" ${i ? '' : 'disabled'} aria-label="Subir">${ic('chevD', 'sm')}</button><button data-act="moveAct" data-show="${sh.id}" data-a="${a.id}" data-d="1" ${i < n - 1 ? '' : 'disabled'} aria-label="Bajar">${ic('chevD', 'sm')}</button></div>`}
   </div>`;
 }
