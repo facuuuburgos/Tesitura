@@ -33,7 +33,7 @@ VIEWS.stats = () => {
   const avg = perHour(s.income, s.minutes);
   return `${topbar('Estadísticas', { right: `<button class="iconbtn" data-act="exportMenu" aria-label="Exportar">${ic('download')}</button>` })}
     <div class="seg" style="margin-bottom:12px"><button class="on">Resumen</button><button data-go="#/invoices">Facturas</button></div>
-    <div class="chips" style="margin-bottom:10px">${[['week', 'Semana'], ['month', 'Mes'], ['year', 'Año'], ['range', 'Rango']].map(([k, l]) => `<button class="chip ${per === k ? 'on' : ''}" data-act="statPer" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="chips" style="margin-bottom:10px">${(() => { const pm = monthStart(addMonths(today(), -1)), isPrev = per === 'month' && monthStart(UI.statDate) === pm; return [['week', 'Semana'], ['month', 'Mes'], ['prev', 'Mes anterior'], ['year', 'Año'], ['range', 'Rango']].map(([k, l]) => `<button class="chip ${(k === 'prev' ? isPrev : k === 'month' ? per === 'month' && !isPrev : per === k) ? 'on' : ''}" data-act="statPer" data-v="${k}">${l}</button>`).join(''); })()}</div>
     ${per === 'range' ? `<div class="grid2">${field('Desde', `<input class="inp" type="date" id="sfrom" value="${a}">`)}${field('Hasta', `<input class="inp" type="date" id="sto" value="${b}">`)}</div>`
       : `<div class="calnav"><button class="iconbtn" data-act="statNav" data-n="-1">${ic('chevL', 'sm')}</button><div class="ttl center">${rangeLabel(a, b)}</div><button class="iconbtn" data-act="statNav" data-n="1">${ic('chevR', 'sm')}</button></div>`}
     ${multi ? `<div class="chips" style="margin-bottom:14px"><button class="chip ${!sid ? 'on' : ''}" data-act="statSchool" data-v="">Todas</button>${activeSchools().map(x => `<button class="chip ${sid === x.id ? 'on' : ''}" data-act="statSchool" data-v="${x.id}">${schoolDot(x)}${esc(x.name)}</button>`).join('')}</div>` : ''}
@@ -64,7 +64,10 @@ AFTER.stats = m => {
   const f = m.querySelector('#sfrom'), t = m.querySelector('#sto');
   if (f) { f.onchange = () => { UI.statFrom = f.value; render(); }; t.onchange = () => { UI.statTo = t.value; render(); }; }
 };
-ACT.statPer = el => { UI.statPer = el.dataset.v; if (el.dataset.v === 'range' && !UI.statFrom) { const [a, b] = [monthStart(today()), today()]; UI.statFrom = a; UI.statTo = b; } render(); };
+ACT.statPer = el => {
+  if (el.dataset.v === 'prev') { UI.statPer = 'month'; UI.statDate = addMonths(today(), -1); render(); return; }
+  if (el.dataset.v === 'month' || el.dataset.v === 'week') UI.statDate = today();
+  UI.statPer = el.dataset.v; if (el.dataset.v === 'range' && !UI.statFrom) { const [a, b] = [monthStart(today()), today()]; UI.statFrom = a; UI.statTo = b; } render(); };
 ACT.statNav = el => { const n = +el.dataset.n; UI.statDate = UI.statPer === 'week' ? addDays(UI.statDate, 7 * n) : UI.statPer === 'year' ? addMonths(UI.statDate, 12 * n) : addMonths(UI.statDate, n); render(); };
 ACT.statSchool = el => { UI.statSchool = el.dataset.v; render(); };
 

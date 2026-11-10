@@ -413,6 +413,22 @@ body.locked .tabbar, body.locked .fab { visibility: hidden; }
 
 .view { animation: fade .22s ease; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } }
+.livedot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); display: inline-block; box-shadow: 0 0 0 0 rgba(239,122,114,.6); animation: pulse 1.8s infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,122,114,.55); } 70% { box-shadow: 0 0 0 8px rgba(239,122,114,0); } 100% { box-shadow: 0 0 0 0 rgba(239,122,114,0); } }
+.nowlist { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+.nowcard { background: linear-gradient(160deg, rgba(227,166,122,.13), var(--card) 55%); border: 1px solid rgba(227,166,122,.28); border-radius: var(--r2); padding: 14px 15px; cursor: pointer; transition: transform .1s; }
+.nowcard.group { background: linear-gradient(160deg, rgba(165,151,255,.14), var(--card) 55%); border-color: rgba(165,151,255,.3); }
+.nowcard:active, .nextcard:active { transform: scale(.985); }
+.nowcard .prog { height: 6px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden; margin: 14px 0 8px; }
+.nowcard .prog div { height: 100%; background: var(--acc); border-radius: 4px; transition: width 1s linear; }
+.nowcard.group .prog div { background: var(--grp); }
+.nowcard b { color: var(--tx); font-weight: 600; }
+.ind-t { color: var(--acc); } .grp-t { color: var(--grp); }
+.nextcard { display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--line); border-radius: var(--r2); padding: 13px 15px; cursor: pointer; transition: transform .1s; }
+.nextcard.hi { background: linear-gradient(160deg, #1f1a16, var(--card) 70%); border-color: rgba(227,166,122,.3); padding: 18px 15px; }
+.nextcard .countdown { text-align: right; flex: none; display: flex; flex-direction: column; }
+.nextcard .countdown b { font: 650 17px var(--disp); color: var(--acc); }
+.nextcard.hi .countdown b { font-size: 21px; }
 .credit { text-align: center; font-size: 12px; color: var(--tx3); margin: 30px 0 10px; }
 .credit a { color: var(--tx2); }
 .banner { display: flex; align-items: center; gap: 12px; background: linear-gradient(120deg, rgba(227, 166, 122, .16), rgba(227, 166, 122, .05)); border: 1px solid rgba(227, 166, 122, .25); border-radius: var(--r2); padding: 12px 14px; margin-bottom: 12px; }

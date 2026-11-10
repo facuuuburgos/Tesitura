@@ -2,6 +2,72 @@
 /* =========================================================
    Tesitura · inicio y calendario
    ========================================================= */
+/* ---------- clases en curso y próxima clase ---------- */
+const nowSecs = () => { const d = new Date(); return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds(); };
+const LIVE_OFF = [...OFF, 'absent'];
+// clases que están sucediendo ahora mismo (según el calendario y la hora local)
+function liveLessons() {
+  const t = today(), ns = nowSecs();
+  return occurrences(t, t).filter(l => !isEvent(l) && !LIVE_OFF.includes(l.status) && toMin(l.start) * 60 <= ns && ns < (toMin(l.start) + (+l.duration || 0)) * 60);
+}
+function nextToday() {
+  const t = today(), ns = nowSecs();
+  return occurrences(t, t).find(l => !LIVE_OFF.includes(l.status) && l.status !== 'done' && toMin(l.start) * 60 > ns) || null;
+}
+const fmtLeft = m => m < 1 ? 'menos de 1 min' : fmtDur(m);
+function liveInfo(l) {
+  const a = toMin(l.start) * 60, d = (+l.duration || 0) * 60, ns = nowSecs();
+  const el = Math.max(0, ns - a), rem = Math.max(0, a + d - ns);
+  return { pct: d ? Math.min(100, el / d * 100) : 0, el: Math.floor(el / 60), rem: Math.ceil(rem / 60) };
+}
+function liveCard(l) {
+  const m = lessonMode(l), ids = l.studentIds || [], i = liveInfo(l);
+  return `<div class="nowcard ${m}" data-act="openLesson" data-id="${l.id}" data-live="${l.id}" data-start="${toMin(l.start)}" data-dur="${+l.duration || 0}" role="button" tabindex="0">
+    <div class="row"><div class="row" style="gap:0">${ids.slice(0, 3).map((s, k) => `<div style="margin-left:${k ? -12 : 0}px">${avatar(student(s))}</div>`).join('')}</div>
+      <div class="grow"><div class="t ell" style="font-weight:600;font-size:16px">${esc(ids.map(s => sName(student(s))).join(', ') || 'Sin alumnos')}</div>
+      <div class="small muted">${l.start}–${lessonEnd(l)} · <span class="${m === 'group' ? 'grp-t' : 'ind-t'}">${m === 'group' ? 'Grupal' : 'Individual'}</span>${activeSchools().length > 1 ? ' · ' + esc(school(l.schoolId).name) : ''}</div></div>${ic('chevR', 'sm chev')}</div>
+    <div class="prog"><div data-p style="width:${i.pct}%"></div></div>
+    <div class="row small"><span class="grow muted">Pasaron <b class="num" data-el>${fmtLeft(i.el)}</b></span><span class="muted">Faltan <b class="num" data-rem>${fmtLeft(i.rem)}</b></span></div>
+    ${ids.length > 1 ? `<div class="chips" style="flex-wrap:wrap;margin-top:10px">${ids.map(s => `<button class="chip" data-act="openLessonStu" data-id="${l.id}" data-s="${s}">${esc(sShort(student(s)))}</button>`).join('')}</div>` : ''}
+  </div>`;
+}
+function nowSection() {
+  const live = liveLessons(), nx = nextToday();
+  UI.liveSig = live.map(l => l.id).join() + '|' + (nx ? nx.id : '');
+  let h = '';
+  if (live.length) h += `<div class="sec" style="margin-top:6px"><h2 class="row" style="gap:8px"><span class="livedot"></span>Ahora</h2><span class="small muted">${live.length} clase${live.length > 1 ? 's' : ''} en curso</span></div><div class="nowlist">${live.map(liveCard).join('')}</div>`;
+  if (nx) {
+    const mins = toMin(nx.start) - nowMin(), m = isEvent(nx) ? 'event' : lessonMode(nx), ids = nx.studentIds || [];
+    h += `<div class="sec" style="margin-top:${live.length ? 20 : 6}px"><h2>Próxima clase</h2></div>
+      <div class="${live.length ? 'nextcard' : 'nextcard hi'}" data-act="openLesson" data-id="${nx.id}" data-next="${toMin(nx.start)}" role="button" tabindex="0">
+        ${isEvent(nx) ? `<div class="keytag" style="background:var(--ev-d);color:var(--ev)">${ic('pin')}</div>` : avatar(student(ids[0]))}
+        <div class="grow" style="min-width:0"><div class="ell" style="font-weight:600;font-size:16px">${esc(isEvent(nx) ? lessonTitle(nx) : ids.map(s => sName(student(s))).join(', '))}</div>
+          <div class="small muted">${nx.start}–${lessonEnd(nx)} · ${fmtDur(nx.duration)} · ${m === 'event' ? 'Compromiso' : m === 'group' ? 'Grupal' : 'Individual'}</div></div>
+        <div class="countdown"><span class="xs muted">empieza en</span><b class="num" data-cd>${fmtLeft(mins)}</b></div>
+      </div>`;
+  } else if (!live.length) {
+    const t = today(), tom = occurrences(addDays(t, 1), addDays(t, 7)).find(l => !LIVE_OFF.includes(l.status));
+    const hadToday = occurrences(t, t).some(l => !isEvent(l));
+    h += `<div class="card row small muted" style="margin-top:6px">${ic(hadToday ? 'check' : 'cal', 'sm')}<span class="grow">${hadToday ? 'No quedan clases por hoy.' : 'Hoy no tenés clases.'}${tom ? ` Próxima: ${fmtDate(tom.date, { rel: 1, dow: 1 })} a las ${tom.start} · ${esc(lessonTitle(tom))}` : ''}</span></div>`;
+  }
+  return h;
+}
+// actualiza los contadores sin redibujar; si empieza o termina una clase, redibuja el inicio
+function liveTick() {
+  if (R.view !== 'home' || document.hidden) return;
+  const live = liveLessons(), nx = nextToday();
+  const sig = live.map(l => l.id).join() + '|' + (nx ? nx.id : '');
+  if (sig !== UI.liveSig) { if (!SHEETS.length) { const y = window.scrollY; render(); window.scrollTo(0, y); } return; }
+  $$('[data-live]').forEach(el => {
+    const l = { start: fromMin(+el.dataset.start), duration: +el.dataset.dur }, i = liveInfo(l);
+    el.querySelector('[data-p]').style.width = i.pct + '%';
+    el.querySelector('[data-el]').textContent = fmtLeft(i.el);
+    el.querySelector('[data-rem]').textContent = fmtLeft(i.rem);
+  });
+  const n = $('[data-next]'); if (n) n.querySelector('[data-cd]').textContent = fmtLeft(+n.dataset.next - nowMin());
+}
+ACT.openLessonStu = (el, e) => { e.stopPropagation(); lessonSheet(el.dataset.id, { student: el.dataset.s }); };
+
 VIEWS.home = () => {
   const t = today(), ms = monthStart(t), me = monthEnd(t);
   const sum = summarize(ms, me);
@@ -13,7 +79,6 @@ VIEWS.home = () => {
   const active = S.students.filter(s => s.status === 'active').length;
   const h = new Date().getHours();
   const name = (S.settings.teacher || '').split(' ')[0];
-  const nextL = todays.find(l => !isEvent(l) && l.status === 'scheduled' && toMin(l.start) >= nowMin() && toMin(l.start) - nowMin() <= 120);
   const projTxt = Object.values(proj).some(Boolean) ? moneyTotal(proj) : '';
   const multi = activeSchools().length > 1;
   // ¿hay un mes anterior sin facturar?
@@ -22,8 +87,8 @@ VIEWS.home = () => {
   return `${topbar((h < 12 ? 'Buen día' : h < 20 ? 'Buenas tardes' : 'Buenas noches') + (name ? ', ' + esc(name) : ''), {
     sub: fmtLong(t), right: `<button class="iconbtn" data-go="#/settings" aria-label="Configuración" data-sync="${syncState}" style="position:relative">${ic('gear')}${AUTH ? '<span class="syncdot" style="position:absolute;right:2px;top:2px"></span>' : ''}</button>`
   })}
-    ${nextL ? `<button class="banner" style="width:100%;text-align:left" data-act="openLesson" data-id="${nextL.id}">${avatar(student(nextL.studentIds[0]))}<div class="grow"><div class="small" style="color:var(--acc);font-weight:600">En ${fmtDur(toMin(nextL.start) - nowMin())}</div><div style="font-weight:600" class="ell">${esc(lessonTitle(nextL))} · ${nextL.start}</div><div class="small muted">Tocá para ver el resumen antes de la clase</div></div>${ic('chevR', 'sm')}</button>` : ''}
-    <div class="stats">
+    ${nowSection()}
+    <div class="stats" style="margin-top:14px">
       <div class="stat hero"><div class="k">${ic('coin', 'sm')}Generado en ${MON_L[parseD(t).getMonth()]}</div><div class="v num">${moneyTotal(sum.income)}</div>${moneyDetail(sum.income) ? `<div class="h">${multi ? 'Convertido a pesos · ' + fxNote() : moneyDetail(sum.income)}</div>` : ''}
         ${multi ? `<div class="row wrap small muted" style="gap:4px 14px;margin-top:8px">${activeSchools().map(sc => { const x = summarize(ms, me, sc.id); return `<span class="row" style="gap:6px">${schoolDot(sc)}${esc(sc.name)} <b class="num" style="color:var(--tx);font-weight:600">${fmtMoneyMap(x.income, money(0, sc.currency))}</b></span>`; }).join('')}</div>` : ''}
         ${S.settings.projection && projTxt ? `<div class="proj">${ic('target', 'sm')}<span>Proyectado hasta fin de mes: <b class="num">+ ${projTxt}</b></span><span class="dim">(clases agendadas, aún no cuentan)</span></div>` : ''}</div>

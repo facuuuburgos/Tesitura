@@ -109,6 +109,7 @@ function songSheet(id) {
         <div class="to"><div class="lab">De trabajo</div><div class="kv">${keyName(wk)}</div><div class="eq">${enharm(wk) ? '= ' + enharm(wk) : '&nbsp;'}</div></div></div>
         <dl class="kv">${ss.startedAt ? `<dt>Comenzó</dt><dd>${fmtDate(ss.startedAt, { year: 1 })}</dd>` : ''}${ss.endedAt ? `<dt>Terminó</dt><dd>${fmtDate(ss.endedAt, { year: 1 })}</dd>` : ''}${ss.notes ? `<dt>Observaciones</dt><dd>${esc(ss.notes)}</dd>` : ''}</dl>
         <div class="links" style="margin-top:12px">${ss.link ? `<a href="${esc(ss.link)}" target="_blank" rel="noopener">${ic('play', 'sm')}Original</a>` : ''}${ss.karaoke ? `<a href="${esc(ss.karaoke)}" target="_blank" rel="noopener">${ic('mic', 'sm')}Instrumental</a>` : ''}${(ss.recordings || []).map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener">${ic('link', 'sm')}${esc(r.label || 'Grabación')}${r.date ? ' · ' + fmtDate(r.date) : ''}</a>`).join('')}</div>
+        ${(ss.keyHistory || []).length ? `<div class="group-t">Historial de tonalidad</div><div class="list">${[...ss.keyHistory].reverse().map(h => `<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px;opacity:.75">${keyName(h.key)}</div><div class="grow small"><div>${fmtSemis(h.t)} semitonos${sg.key ? ' desde ' + keyName(sg.key) : ''}</div><div class="muted xs">${h.since ? fmtDate(h.since) + ' → ' : 'hasta '}${fmtDate(h.until)}</div></div></div>`).join('')}<div class="li" style="min-height:46px;padding:8px 12px"><div class="keytag" style="min-width:40px;height:36px;font-size:14px">${keyName(wk)}</div><div class="grow small"><div>${fmtSemis(t)} semitonos · actual</div><div class="muted xs">desde ${fmtDate(ss.keySince || ss.startedAt)}</div></div></div></div>` : ''}
         ${other.length ? `<div class="group-t">Otras veces que la trabajó</div><div class="small muted">${other.map(x => `${fmtDate(x.startedAt)}${x.endedAt ? '–' + fmtDate(x.endedAt) : ''} en ${keyName(workKey(x))}`).join(' · ')}</div>` : ''}
         ${logs.length ? `<div class="group-t">En las clases</div>${logs.slice(0, 8).map(n => `<div class="small" style="margin-bottom:6px"><b>${fmtDate(n.date)}</b> <span class="muted">${esc([n.technique, n.progress, n.difficulties].filter(Boolean).join(' · ').slice(0, 140))}</span></div>`).join('')}` : ''}
         <div class="btns"><button class="btn sm" data-ed>${ic('edit', 'sm')}Editar</button>${ss.endedAt ? `<button class="btn sm" data-again>${ic('repeat', 'sm')}Volver a trabajarla</button>` : `<button class="btn sm" data-end>${ic('check', 'sm')}Terminada</button>`}</div>
@@ -216,6 +217,15 @@ function songForm(ss, studentId, after) {
         Object.assign(song, { title: F.title, artist: F.artist, key: F.key });
         upsert('songs', song);
         const rec = ss || { id: uid(), studentId, endedAt: '' };
+        // si cambió la tonalidad de trabajo, se guarda la anterior en el historial
+        if (ss) {
+          const oldSong = byId('songs', ss.songId) || {}, oldK = workKey(ss), newK = F.manual ? F.workKey : transposeKey(F.key, F.transpose);
+          const oldT = ss.manual && ss.workKey && oldSong.key ? semisBetween(oldSong.key.pc, ss.workKey.pc) : (+ss.transpose || 0);
+          if (oldK && newK && (oldK.pc !== newK.pc || oldK.minor !== newK.minor || oldT !== F.transpose)) {
+            rec.keyHistory = [...(ss.keyHistory || []), { since: ss.keySince || ss.startedAt || '', until: today(), key: oldK, t: oldT }];
+            rec.keySince = today();
+          }
+        } else rec.keySince = F.startedAt || today();
         Object.assign(rec, {
           songId: song.id, transpose: F.transpose, manual: F.manual, workKey: F.manual ? F.workKey : null, startedAt: F.startedAt, link: F.link, karaoke: F.karaoke,
           recordings: F.recordings.filter(r => r.url), notes: F.notes

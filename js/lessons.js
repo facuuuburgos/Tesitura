@@ -115,10 +115,10 @@ function contextHtml(sid, l, o = {}) {
     ${o.noHead ? '' : `<div class="row">${avatar(st)}<div class="grow"><div style="font-weight:600">${esc(sName(st))}</div><div class="small muted">${cx.lastLesson ? 'Última clase: ' + fmtDate(cx.lastLesson.date, { rel: 1, dow: 1 }) : 'Sin clases anteriores'}${st.voiceType ? ' · ' + esc(st.voiceType) : ''}${rangeTxt(st) ? ' · ' + rangeTxt(st) : ''}</div></div><button class="mini" data-goprof="${st.id}">Perfil</button></div>`}
     ${cx.songs.length ? `<div class="blk"><div class="lab">Canciones en curso</div><div class="list">${cx.songs.map(ss => songRowMini(ss)).join('')}</div></div>` : ''}
     ${last ? `${blk('La clase pasada (' + fmtDate(last.date) + ')', [last.technique && 'Técnica: ' + last.technique, last.exercises && 'Ejercicios: ' + last.exercises, (last.songs || []).length && 'Canciones: ' + last.songs.map(id => { const ss = byId('studentSongs', id); const sg = ss && byId('songs', ss.songId); return sg ? sg.title : ''; }).filter(Boolean).join(', ')].filter(Boolean).join('\n'))}
-      ${blk('Dificultades pendientes', last.difficulties)}${blk('Objetivos para esta clase', last.nextGoals)}${blk('Avances', last.progress)}` : ''}
+      ${blk('Dificultades pendientes', last.difficulties)}${blk('Objetivos para esta clase', last.nextGoals)}${blk('Avances', last.progress)}${blk('Observaciones de esa clase', last.notes)}` : ''}
     ${!last && st.difficulties ? blk('Dificultades identificadas', st.difficulties) : ''}
     ${st.goals ? blk('Objetivos personales', st.goals) : ''}
-    ${cx.pinned.map(n => blk('📌 Nota fijada', n.text)).join('')}
+    ${(() => { const gn = S.vocalNotes.filter(n => n.studentId === sid).sort((a, b) => (b.pinned - a.pinned) || b.date.localeCompare(a.date)).slice(0, 2); return gn.map(n => blk('Nota general' + (n.pinned ? ' · fijada' : '') + (n.title ? ' · ' + n.title : ''), n.text)).join(''); })()}
     ${st.observations ? blk('Observaciones', st.observations) : ''}
     ${!last && !cx.songs.length && !st.goals && !st.observations ? '<div class="muted small">Todavía no hay información pedagógica de este alumno. Después de la clase, registrá lo trabajado en la pestaña Registro.</div>' : ''}
   </div>`;
@@ -304,6 +304,31 @@ function lessonForm(o = {}) {
             saved = virtualOcc(s, F.date);
             toast('Clase recurrente creada');
           } else {
+            // ¿ya existe esa clase en el calendario? (mismo día, algún alumno en común, horario que se cruza)
+            if (F.kind === 'lesson') {
+              const a = toMin(F.start), b = a + F.duration;
+              const dup = occurrences(F.date, F.date).find(x => !isEvent(x) && !OFF.includes(x.status) && (x.studentIds || []).some(i => F.studentIds.includes(i)) && toMin(x.start) < b + 30 && toMin(x.start) + (+x.duration || 0) > a - 30);
+              if (dup) {
+                const already = dup.status === 'done';
+                const v = await ask(already ? 'Esa clase ya está registrada' : 'Esa clase ya está en el calendario',
+                  `${esc(lessonTitle(dup))} · ${fmtDate(dup.date, { dow: 1 })} ${dup.start}–${lessonEnd(dup)} (${STATUS[dup.status].s.toLowerCase()}).`,
+                  [...(already ? [] : [{ label: F.markDone ? 'Marcar esa como realizada' : 'Abrir la del calendario', val: 'use' }]), { label: 'Es otra clase: crearla igual', val: 'new', cls: 'ghost' }, { label: 'Cancelar', val: null, cls: 'ghost' }]);
+                if (!v) return;
+                if (v === 'use') {
+                  let l = dup;
+                  if (F.markDone) {
+                    l = materialize(dup);
+                    if (l.start !== F.start || +l.duration !== F.duration) { l.realDur = F.duration; }
+                    if (F.notes) l.notes = [l.notes, F.notes].filter(Boolean).join('\n');
+                    l = setStatus(l, 'done');
+                    toast('Clase del calendario marcada como realizada');
+                  }
+                  save(); sh.close(); render();
+                  setTimeout(() => lessonSheet(l.id, { section: F.markDone ? 'log' : 'ctx' }), 250);
+                  return;
+                }
+              }
+            }
             saved = upsert('lessons', Object.assign({ id: uid(), date: F.date, status: 'scheduled' }, base));
             if (F.markDone) saved = setStatus(saved, 'done');
             toast(F.kind === 'event' ? 'Compromiso creado' : (F.markDone ? 'Clase registrada como realizada' : 'Clase creada'));
