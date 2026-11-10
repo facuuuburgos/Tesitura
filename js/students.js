@@ -14,10 +14,10 @@ function stuListHtml() {
   const q = norm(UI.stuQ), multi = activeSchools().length > 1, nxt = nextLessons();
   const list = S.students.filter(s => (UI.stuFilter === 'all' || s.status === UI.stuFilter) && (!UI.stuSchool || s.schoolId === UI.stuSchool) && (!q || norm(sName(s) + ' ' + (s.email || '') + ' ' + (s.phone || '')).includes(q)))
     .sort((a, b) => sName(a).localeCompare(sName(b)));
-  const songsN = {}; S.studentSongs.forEach(x => { if (!x.endedAt) songsN[x.studentId] = (songsN[x.studentId] || 0) + 1; });
+  const songsOf = {}; S.studentSongs.forEach(x => { if (!x.endedAt) (songsOf[x.studentId] = songsOf[x.studentId] || []).push(x); });
   return list.length ? `<div class="list">${list.map(s => {
-    const nx = s.status === 'active' ? nxt[s.id] : null, songs = songsN[s.id] || 0;
-    return `<a class="li av" href="#/student/${s.id}">${avatar(s)}<div class="grow"><div class="t ell">${esc(sName(s))}</div><div class="s ell">${multi ? esc(school(s.schoolId).name) + ' · ' : ''}${nx ? 'Próxima: ' + fmtDate(nx.date, { rel: 1, dow: 1 }) + ' ' + nx.start : (s.status !== 'active' ? ST_STATUS[s.status] : 'Sin clases agendadas')}${songs ? ` · ${songs} canción${songs > 1 ? 'es' : ''}` : ''}</div></div>${ic('chevR', 'sm chev')}</a>`;
+    const nx = s.status === 'active' ? nxt[s.id] : null, songs = (songsOf[s.id] || []).map(ss => { const sg = byId('songs', ss.songId) || {}, t = semisOf(ss); return esc(sg.title || '') + (t ? ` <b class="num" style="color:var(--acc);font-weight:600">${fmtSemis(t)}</b>` : ''); });
+    return `<a class="li av" href="#/student/${s.id}">${avatar(s)}<div class="grow"><div class="t ell">${esc(sName(s))}</div><div class="s ell">${multi ? esc(school(s.schoolId).name) + ' · ' : ''}${nx ? 'Próxima: ' + fmtDate(nx.date, { rel: 1, dow: 1 }) + ' ' + nx.start : (s.status !== 'active' ? ST_STATUS[s.status] : 'Sin clases agendadas')}</div>${songs.length ? `<div class="s ell" style="color:var(--tx)">♪ ${songs.join(' · ')}</div>` : ''}</div>${ic('chevR', 'sm chev')}</a>`;
   }).join('')}</div>`
     : `<div class="empty">${ic('users')}<div class="t">${S.students.length ? 'Sin resultados' : 'Todavía no hay alumnos'}</div>${S.students.length ? '' : `<div class="small">Agregá tu primer alumno para empezar.</div><div class="sp"></div><button class="btn pri" data-act="newStudent">${ic('plus', 'sm')}Nuevo alumno</button>`}</div>`;
 }
@@ -30,14 +30,26 @@ VIEWS.students = () => {
       ${[['active', 'Activos'], ['paused', 'Pausados'], ['inactive', 'Inactivos'], ['all', 'Todos']].map(([k, l]) => `<button class="chip ${UI.stuFilter === k ? 'on' : ''}" data-act="stuFilter" data-v="${k}">${l}${k !== 'all' ? ` <span class="dim">${cnt(k)}</span>` : ''}</button>`).join('')}
     </div>
     ${multi ? `<div class="chips" style="margin-bottom:14px"><button class="chip ${!UI.stuSchool ? 'on' : ''}" data-act="stuSchool" data-v="">Todas las escuelas</button>${activeSchools().map(s => `<button class="chip ${UI.stuSchool === s.id ? 'on' : ''}" data-act="stuSchool" data-v="${s.id}">${schoolDot(s)}${esc(s.name)}</button>`).join('')}</div>` : ''}
-    <div id="stulist">${stuListHtml()}</div>`;
+    <div class="seg" style="margin-bottom:12px"><button class="${UI.stuMode !== 'songs' ? 'on' : ''}" data-act="stuMode" data-v="list">Alumnos</button><button class="${UI.stuMode === 'songs' ? 'on' : ''}" data-act="stuMode" data-v="songs">Qué está cantando cada uno</button></div>
+    <div id="stulist">${UI.stuMode === 'songs' ? stuSongsHtml() : stuListHtml()}</div>`;
 };
 AFTER.students = m => {
   // al escribir solo se actualiza la lista, sin redibujar la pantalla
   const q = m.querySelector('#stuq');
-  q.oninput = () => { UI.stuQ = q.value; $('#stulist').innerHTML = stuListHtml(); };
+  q.oninput = () => { UI.stuQ = q.value; $('#stulist').innerHTML = UI.stuMode === 'songs' ? stuSongsHtml() : stuListHtml(); };
   q.onkeydown = e => { if (e.key === 'Enter') q.blur(); };
 };
+ACT.stuMode = el => { UI.stuMode = el.dataset.v; render(); };
+// todos los alumnos con sus canciones actuales; se puede buscar por alumno o por canción
+function stuSongsHtml() {
+  const q = norm(UI.stuQ);
+  const list = S.students.filter(s => (UI.stuFilter === 'all' || s.status === UI.stuFilter) && (!UI.stuSchool || s.schoolId === UI.stuSchool))
+    .filter(s => !q || norm(sName(s)).includes(q) || S.studentSongs.some(x => x.studentId === s.id && !x.endedAt && norm((byId('songs', x.songId) || {}).title).includes(q)))
+    .sort((a, b) => sName(a).localeCompare(sName(b)));
+  if (!list.length) return `<div class="empty">${ic('music')}<div class="t">Sin resultados</div></div>`;
+  return `<div class="list">${list.map(s => `<div class="li av" style="align-items:flex-start">${avatar(s)}<div class="grow" style="min-width:0"><a class="t ell" href="#/student/${s.id}" style="color:var(--tx);display:block">${esc(sName(s))}</a>
+    ${songChips(s.id, { style: 'margin-top:6px', empty: `<button class="mini" style="margin-top:6px" data-act="newSong" data-id="${s.id}">${ic('plus', 'sm')}Agregar canción</button>` })}</div></div>`).join('')}</div>`;
+}
 ACT.stuFilter = el => { UI.stuFilter = el.dataset.v; render(); };
 ACT.stuSchool = el => { UI.stuSchool = el.dataset.v; render(); };
 ACT.newStudent = () => studentForm(null, { onSave: s => go('#/student/' + s.id) });
@@ -55,6 +67,7 @@ VIEWS.student = id => {
       <div class="row wrap small muted" style="gap:6px;margin-top:6px"><span class="pill ${s.status === 'active' ? 'st-done' : s.status === 'paused' ? 'st-absent' : 'st-sched'}">${ST_STATUS[s.status]}</span>
       ${activeSchools().length > 1 || S.schools.length > 1 ? `<span class="row" style="gap:5px">${schoolDot(sc)}${esc(sc.name)}</span>` : ''}${s.voiceType ? `<span>· ${esc(s.voiceType)}</span>` : ''}</div></div></div>
     ${tel || s.email ? `<div class="contact">${tel ? `<a href="https://wa.me/${tel.replace('+', '')}" target="_blank" rel="noopener">${ic('chat')}WhatsApp</a><a href="tel:${tel}">${ic('phone')}Llamar</a>` : ''}${s.email ? `<a href="mailto:${esc(s.email)}">${ic('mail')}Email</a>` : ''}<button data-act="newLessonFor" data-id="${id}">${ic('cal')}Agendar</button></div>` : `<div class="contact"><button data-act="newLessonFor" data-id="${id}">${ic('cal')}Agendar clase</button><button data-act="newSong" data-id="${id}">${ic('music')}Canción</button><button data-act="newNote" data-id="${id}">${ic('book')}Nota</button></div>`}
+    <div class="card" style="padding:12px 14px;margin-bottom:14px"><div class="row"><div class="grow small muted" style="font-weight:600">Canciones en curso</div><button class="mini" data-act="newSong" data-id="${id}">${ic('plus', 'sm')}</button></div>${songChips(id, { style: 'margin-top:8px', empty: '<div class="small dim" style="margin-top:6px">Todavía no tiene canciones.</div>' })}</div>
     <div class="tabs">${tabs.map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-act="stTab" data-id="${id}" data-v="${k}">${l}</button>`).join('')}</div>
     ${({ sum: stSummary, songs: stSongs, lessons: stLessons, notes: stNotes })[tab](s)}`;
 };
@@ -67,7 +80,9 @@ function stSummary(s) {
   const up = occurrences(t, addDays(t, 45)).filter(l => (l.studentIds || []).includes(s.id) && stOf(l) === 'scheduled' && (l.date > t || toMin(l.start) + l.duration > nowMin())).slice(0, 4);
   const series = S.series.filter(x => (x.studentIds || []).includes(s.id) && (!x.until || x.until >= t));
   const yr = S.lessons.filter(l => (l.studentIds || []).includes(s.id) && l.status === 'done');
-  return `<div class="sec" style="margin-top:6px"><h2>Próximas clases</h2></div>
+  const shs = showsOfStudent(s.id);
+  return `${shs.length ? `<div class="sec" style="margin-top:6px"><h2>Shows</h2></div><div class="list">${shs.map(sh => { const acts = (sh.acts || []).filter(a => (a.studentIds || []).includes(s.id)); const at = attendOf(sh, s.id); return `<a class="li" href="#/show/${sh.id}"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('mic')}</div><div class="grow" style="min-width:0"><div class="t ell">${esc(sh.title)} · ${fmtDate(sh.date)}</div><div class="s ell">${acts.length ? acts.map(a => esc(songLabel(a.ssId, { empty: 'canción a definir' }))).join(' · ') : 'Sin canción asignada'}</div></div><span class="pill ${ATT[at].c}">${ATT[at].s}</span></a>`; }).join('')}</div>` : ''}
+  <div class="sec" style="margin-top:${shs.length ? 26 : 6}px"><h2>Próximas clases</h2></div>
     ${series.length ? `<div class="small muted" style="margin:-4px 2px 10px">${ic('repeat', 'sm')} ${series.map(x => `${x.days.map(d => DOW_L[d]).join(' y ')} a las ${x.start}${+x.interval > 1 ? ' (cada ' + x.interval + ' semanas)' : ''}`).join(' · ')}</div>` : ''}
     ${up.length ? `<div class="list">${up.map(l => lessonRow(l, { date: 1 })).join('')}</div>` : `<div class="card small muted">No tiene clases agendadas. <a href="#" data-act="newLessonFor" data-id="${s.id}">Agendar</a></div>`}
     <div class="sec"><h2>Antes de la próxima clase</h2><span class="small muted">${yr.length} clase${yr.length === 1 ? '' : 's'} realizada${yr.length === 1 ? '' : 's'}</span></div>
@@ -104,18 +119,21 @@ function songSheet(id) {
       const hist = (ss.keyHistory || []).map(h => h.t);
       return `<div class="muted small" style="margin:-6px 0 12px">${esc(sg.artist || '')}</div>
         <div class="keybig" style="justify-content:center"><div class="center"><div class="lab">Tono</div><div class="kv" style="color:${t ? 'var(--acc)' : 'var(--tx)'}">${t ? fmtSemis(t) : 'Original'}</div><div class="eq">${t ? (Math.abs(t) === 1 ? 'semitono' : 'semitonos') + (t > 0 ? ' arriba' : ' abajo') : 'sin transportar'}</div></div></div>
+        ${(() => { const shs = showsOfSong(ss.id).filter(x => x.date >= today()); return shs.length ? shs.map(x => `<a class="infobox" href="#/show/${x.id}" style="margin-bottom:10px;color:var(--grp);background:var(--grp-d)">${ic('mic', 'sm')}<div class="grow">Para el show <b>${esc(x.title)}</b> · ${fmtDate(x.date)}</div>${ic('chevR', 'sm')}</a>`).join('') : ''; })()}
         <dl class="kv">${ss.notes ? `<dt>Observaciones</dt><dd>${esc(ss.notes)}</dd>` : ''}</dl>
         <div class="links" style="margin-top:12px">${ss.link ? `<a href="${esc(ss.link)}" target="_blank" rel="noopener">${ic('play', 'sm')}Original</a>` : ''}${ss.karaoke ? `<a href="${esc(ss.karaoke)}" target="_blank" rel="noopener">${ic('mic', 'sm')}Instrumental</a>` : ''}${(ss.recordings || []).map(r => `<a href="${esc(r.url)}" target="_blank" rel="noopener">${ic('link', 'sm')}${esc(r.label || 'Grabación')}</a>`).join('')}</div>
         ${hist.length ? `<div class="group-t">Cambios de tono</div><div class="small muted">${[...hist, t].map((x, i, a) => i === a.length - 1 ? `<b style="color:var(--tx)">${semisTxt(x)} (actual)</b>` : semisTxt(x)).join(' → ')}</div>` : ''}
         ${other.length ? `<div class="group-t">Otras veces que la trabajó</div><div class="small muted">${other.map(x => semisTxt(semisOf(x))).join(' · ')}</div>` : ''}
         ${logs.length ? `<div class="group-t">En las clases</div>${logs.slice(0, 8).map(n => `<div class="small" style="margin-bottom:6px"><b>${fmtDate(n.date)}</b> <span class="muted">${esc([n.technique, n.progress, n.difficulties].filter(Boolean).join(' · ').slice(0, 140))}</span></div>`).join('')}` : ''}
         <div class="btns"><button class="btn sm" data-ed>${ic('edit', 'sm')}Editar</button>${ss.endedAt ? `<button class="btn sm" data-again>${ic('repeat', 'sm')}Volver a trabajarla</button>` : `<button class="btn sm" data-end>${ic('check', 'sm')}Terminada</button>`}</div>
+        ${!ss.endedAt ? `<button class="btn sm full" style="margin-top:8px;color:var(--grp)" data-forshow>${ic('mic', 'sm')}Para un show</button>` : ''}
         <button class="btn sm ghost danger full" style="margin-top:6px" data-del>${ic('trash', 'sm')}Eliminar</button>`;
     },
     mount: (el, sh) => {
       const ss = byId('studentSongs', id); if (!ss) return;
       const q = s => el.querySelector(s);
       q('[data-ed]').onclick = () => songForm(ss, ss.studentId, () => sh.render());
+      if (q('[data-forshow]')) q('[data-forshow]').onclick = () => addSongToShow(ss, () => sh.render());
       if (q('[data-end]')) q('[data-end]').onclick = () => { ss.endedAt = today(); upsert('studentSongs', ss); save(); sh.render(); render(); toast('Pasó a canciones anteriores'); };
       if (q('[data-again]')) q('[data-again]').onclick = () => {
         // vuelve a trabajarse: nuevo período, el anterior queda en el historial

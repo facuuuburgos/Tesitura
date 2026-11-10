@@ -3,7 +3,7 @@
    Tesitura · núcleo: datos, fechas, música, cobros, sincronización
    ========================================================= */
 const KEY = 'tesitura.data', AKEY = 'tesitura.auth';
-const COLLS = ['closures', 'schools', 'students', 'songs', 'studentSongs', 'series', 'lessons', 'lessonNotes', 'vocalNotes', 'invoices'];
+const COLLS = ['shows', 'closures', 'schools', 'students', 'songs', 'studentSongs', 'series', 'lessons', 'lessonNotes', 'vocalNotes', 'invoices'];
 
 /* ---------- utilidades ---------- */
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -123,7 +123,7 @@ function blank() {
       hours: [], // horarios habituales [{d:2,start:'16:00',end:'20:00'}]
     },
     schools: [defaultSchool()],
-    closures: [], students: [], songs: [], studentSongs: [], series: [], lessons: [], lessonNotes: [], vocalNotes: [], invoices: []
+    shows: [], closures: [], students: [], songs: [], studentSongs: [], series: [], lessons: [], lessonNotes: [], vocalNotes: [], invoices: []
   };
 }
 function defaultSchool() {

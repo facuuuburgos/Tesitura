@@ -181,10 +181,11 @@ const NAV = [
   ['home', 'Inicio', 'home', '#/'], ['students', 'Alumnos', 'users', '#/students'],
   ['calendar', 'Calendario', 'cal', '#/calendar'], ['stats', 'Estadísticas', 'chart', '#/stats'],
 ];
-const navOn = k => R.view === k || (k === 'students' && R.view === 'student') || (k === 'stats' && R.view === 'invoices');
+const navOn = k => R.view === k || (k === 'home' && (R.view === 'shows' || R.view === 'show')) || (k === 'students' && R.view === 'student') || (k === 'stats' && R.view === 'invoices');
 function shell() {
   return `<nav class="side"><div class="brand"><span class="logo">${ic('wave')}</span>Tesitura</div>
     ${NAV.map(n => `<a href="${n[3]}" class="${navOn(n[0]) ? 'on' : ''}">${ic(n[2])}${n[1]}</a>`).join('')}
+    <a href="#/shows" class="${R.view === 'shows' || R.view === 'show' ? 'on' : ''}">${ic('mic')}Shows</a>
     <a href="#/invoices" class="${R.view === 'invoices' ? 'on' : ''}">${ic('file')}Facturas</a>
     <div class="gap"></div>
     <a href="#/settings" class="${R.view === 'settings' || R.view === 'school' ? 'on' : ''}">${ic('gear')}Configuración</a>

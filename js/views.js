@@ -26,15 +26,18 @@ function liveCard(l) {
     <div class="row"><div class="row" style="gap:0">${ids.slice(0, 3).map((s, k) => `<div style="margin-left:${k ? -12 : 0}px">${avatar(student(s))}</div>`).join('')}</div>
       <div class="grow"><div class="t ell" style="font-weight:600;font-size:16px">${esc(ids.map(s => sName(student(s))).join(', ') || 'Sin alumnos')}</div>
       <div class="small muted">${l.start}–${lessonEnd(l)} · <span class="${m === 'group' ? 'grp-t' : 'ind-t'}">${m === 'group' ? 'Grupal' : 'Individual'}</span>${activeSchools().length > 1 ? ' · ' + esc(school(l.schoolId).name) : ''}</div></div>${ic('chevR', 'sm chev')}</div>
+    ${ids.length === 1 ? songChips(ids[0], { empty: '<div class="small dim" style="margin-top:8px">Sin canciones en curso</div>' }) : `<div class="nowsongs">${ids.map(s => { const c = songChips(s, { style: 'margin-top:2px' }); return c ? `<div class="who">${esc(sShort(student(s)))}</div>${c}` : ''; }).join('')}</div>`}
     <div class="prog"><div data-p style="width:${i.pct}%"></div></div>
     <div class="row small"><span class="grow muted">Pasaron <b class="num" data-el>${fmtLeft(i.el)}</b></span><span class="muted">Faltan <b class="num" data-rem>${fmtLeft(i.rem)}</b></span></div>
     ${ids.length > 1 ? `<div class="chips" style="flex-wrap:wrap;margin-top:10px">${ids.map(s => `<button class="chip" data-act="openLessonStu" data-id="${l.id}" data-s="${s}">${esc(sShort(student(s)))}</button>`).join('')}</div>` : ''}
   </div>`;
 }
+const liveSig = (live, nx) => live.map(l => l.id).join() + '|' + (nx ? nx.id : '') + '|' + liveShowBlocks().map(x => x.b.id).join();
 function nowSection() {
-  const live = liveLessons(), nx = nextToday();
-  UI.liveSig = live.map(l => l.id).join() + '|' + (nx ? nx.id : '');
+  const live = liveLessons(), nx = nextToday(), shows = liveShowBlocks();
+  UI.liveSig = liveSig(live, nx);
   let h = '';
+  if (shows.length) h += `<div class="sec" style="margin-top:6px"><h2 class="row" style="gap:8px"><span class="livedot"></span>Show en curso</h2></div><div class="nowlist">${shows.map(x => liveShowCard(x.sh, x.b)).join('')}</div>`;
   if (live.length) h += `<div class="sec" style="margin-top:6px"><h2 class="row" style="gap:8px"><span class="livedot"></span>Ahora</h2><span class="small muted">${live.length} clase${live.length > 1 ? 's' : ''} en curso</span></div><div class="nowlist">${live.map(liveCard).join('')}</div>`;
   if (nx) {
     const mins = toMin(nx.start) - nowMin(), m = isEvent(nx) ? 'event' : lessonMode(nx), ids = nx.studentIds || [];
@@ -42,7 +45,8 @@ function nowSection() {
       <div class="${live.length ? 'nextcard' : 'nextcard hi'}" data-act="openLesson" data-id="${nx.id}" data-next="${toMin(nx.start)}" role="button" tabindex="0">
         ${isEvent(nx) ? `<div class="keytag" style="background:var(--ev-d);color:var(--ev)">${ic('pin')}</div>` : avatar(student(ids[0]))}
         <div class="grow" style="min-width:0"><div class="ell" style="font-weight:600;font-size:16px">${esc(isEvent(nx) ? lessonTitle(nx) : ids.map(s => sName(student(s))).join(', '))}</div>
-          <div class="small muted">${nx.start}–${lessonEnd(nx)} · ${fmtDur(nx.duration)} · ${m === 'event' ? 'Compromiso' : m === 'group' ? 'Grupal' : 'Individual'}</div></div>
+          <div class="small muted">${nx.start}–${lessonEnd(nx)} · ${fmtDur(nx.duration)} · ${m === 'event' ? 'Compromiso' : m === 'group' ? 'Grupal' : 'Individual'}</div>
+          ${!isEvent(nx) && ids.length === 1 ? songChips(ids[0], { style: 'margin-top:8px' }) : ''}</div>
         <div class="countdown"><span class="xs muted">empieza en</span><b class="num" data-cd>${fmtLeft(mins)}</b></div>
       </div>`;
   } else if (!live.length) {
@@ -56,7 +60,7 @@ function nowSection() {
 function liveTick() {
   if (R.view !== 'home' || document.hidden) return;
   const live = liveLessons(), nx = nextToday();
-  const sig = live.map(l => l.id).join() + '|' + (nx ? nx.id : '');
+  const sig = liveSig(live, nx);
   if (sig !== UI.liveSig) { if (!SHEETS.length) { const y = window.scrollY; render(); window.scrollTo(0, y); } return; }
   $$('[data-live]').forEach(el => {
     const l = { start: fromMin(+el.dataset.start), duration: +el.dataset.dur }, i = liveInfo(l);
@@ -102,6 +106,7 @@ VIEWS.home = () => {
       <button data-act="quickRegister">${ic('edit', 'lg')}Registrar</button>
       <button data-act="newEvent">${ic('pin', 'lg')}Compromiso</button>
     </div>
+    ${(() => { const up = upcomingShows().filter(s => dayDiff(today(), s.date) <= 120).slice(0, 2); return `<div class="sec"><h2>Shows</h2><a class="lnk" href="#/shows">${up.length ? 'Ver todos' : ''}</a></div>` + (up.length ? `<div class="list">${up.map(sh => { ensurePeople(sh); const yes = sh.people.filter(p => p.attend === 'yes').length; return `<a class="li" href="#/show/${sh.id}"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('mic')}</div><div class="grow"><div class="t ell">${esc(sh.title)}</div><div class="s ell">${fmtDate(sh.date, { dow: 1 })}${showTimes(sh) ? ' · ' + showTimes(sh) : ''} · ${yes}/${sh.people.length} confirmados · ${(sh.acts || []).length} canciones</div></div><span class="pill group">${daysTo(sh.date)}</span></a>`; }).join('')}</div>` : `<a class="li tap list" href="#/shows" style="display:flex"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('mic')}</div><div class="grow"><div class="t">Shows de alumnos</div><div class="s">Fechas, horarios, quién canta qué y en qué orden</div></div>${ic('chevR', 'sm chev')}</a>`); })()}
     ${toBill.length ? `<div class="sec"><h2>Facturación</h2></div><div class="list">${toBill.map(sc => `<button class="li tap" data-act="goInvoice" data-id="${sc.id}" data-m="${pm}">${ic('file')}<div class="grow"><div class="t">Factura de ${MON_L[parseD(pm).getMonth()]} · ${esc(sc.name)}</div><div class="s">Lista para generar</div></div>${ic('chevR', 'sm chev')}</button>`).join('')}</div>` : ''}
     ${pend.length ? `<div class="sec"><h2>Por confirmar</h2><span class="small muted">${pend.length} clase${pend.length > 1 ? 's' : ''}</span></div>
       <div class="list">${pend.slice(-5).reverse().map(l => `<div class="li">${avatar(student(l.studentIds[0]), 'sm')}<button class="grow" style="text-align:left;min-width:0" data-act="openLesson" data-id="${l.id}"><div class="t ell">${esc(lessonTitle(l))}</div><div class="s">${fmtDate(l.date, { rel: 1, dow: 1 })} · ${l.start}</div></button>
@@ -150,9 +155,11 @@ function dayBanner(d) {
 }
 function dayList(d) {
   const ls = occurrences(d, d);
-  if (!ls.length) return '';
+  const shs = S.shows.filter(s => s.date === d);
+  const showHtml = shs.length ? `<div class="sec"><h2>Shows</h2></div><div class="list">${shs.map(sh => `<a class="li" href="#/show/${sh.id}"><div class="keytag" style="background:var(--grp-d);color:var(--grp)">${ic('mic')}</div><div class="grow"><div class="t ell">${esc(sh.title)}</div><div class="s">${showTimes(sh)} · ${(sh.acts || []).length} canciones</div></div>${ic('chevR', 'sm chev')}</a>`).join('')}</div>` : '';
+  if (!ls.length) return showHtml;
   const s = summarize(d, d);
-  return `<div class="sec"><h2>Resumen del día</h2><span class="small muted">${ls.filter(l => !isEvent(l)).length} clases · ${fmtHours(ls.filter(l => !isEvent(l) && !OFF.includes(stOf(l))).reduce((a, l) => a + (+l.duration), 0))}${s.done ? ' · ' + fmtMoneyMap(s.income) : ''}</span></div><div class="list">${ls.map(l => lessonRow(l, { money: 1, showSched: true })).join('')}</div>`;
+  return showHtml + `<div class="sec"><h2>Resumen del día</h2><span class="small muted">${ls.filter(l => !isEvent(l)).length} clases · ${fmtHours(ls.filter(l => !isEvent(l) && !OFF.includes(stOf(l))).reduce((a, l) => a + (+l.duration), 0))}${s.done ? ' · ' + fmtMoneyMap(s.income) : ''}</span></div><div class="list">${ls.map(l => lessonRow(l, { money: 1, showSched: true })).join('')}</div>`;
 }
 ACT.calView = el => { UI.calView = el.dataset.v; render(); };
 ACT.calNav = el => {
@@ -187,7 +194,7 @@ function weekLabel(l) {
   return base + (ids.length > 1 ? '+' + (ids.length - 1) : '');
 }
 function timeGrid(days) {
-  const t = today(), all = occurrences(days[0], days[days.length - 1]);
+  const t = today(), all = [...occurrences(days[0], days[days.length - 1]), ...showItems(days[0], days[days.length - 1])];
   const [a, b] = gridRange(days, all), px = PXM(), H = (b - a) * px;
   const week = days.length > 1;
   const head = week ? `<div class="whead">${days.map(d => `<button class="${d === t ? 'today' : ''}" data-act="calDay" data-d="${d}">${DOW_S[dow(d)]}<b>${parseD(d).getDate()}</b></button>`).join('')}</div>` : '';
@@ -202,7 +209,9 @@ function timeGrid(days) {
     return `<div class="col ${d === t ? 'today' : ''} ${S.closures.some(c => d >= c.from && d <= (c.to || c.from)) ? 'closedday' : ''}" data-col="${d}">${habit}${hours.map(m => `<div class="hl" style="top:${(m - a) * px + 4}px"></div>`).join('')}
         ${d === t && nm >= a && nm <= b ? `<div class="nowl" style="top:${(nm - a) * px + 4}px"></div>` : ''}
         ${ls.map(({ l, a: s, b: e, lane, n }) => {
-      const m = isEvent(l) ? 'event' : lessonMode(l), w = 100 / n;
+      const w = 100 / n;
+      if (l.isShow) return `<button class="ev show" data-act="openShow" data-id="${l.showId}" style="top:${(s - a) * px + 5}px;height:${Math.max(l.duration * px - 2, 20)}px;left:calc(${lane * w}% + 2px);width:calc(${w}% - 4px);right:auto"><b>${week && window.innerWidth < 640 ? '🎤' : '🎤 ' + esc(l.title)}</b>${l.duration * px > 34 ? `<span>${l.start}</span>` : ''}</button>`;
+      const m = isEvent(l) ? 'event' : lessonMode(l);
       const cls = [m, OFF.includes(stOf(l)) ? 'off' : '', l.status === 'done' ? 'done' : '', l.status === 'absent' ? 'absent off' : ''].join(' ');
       const hgt = Math.max((+l.duration || 0) * px - 2, 20);
       return `<button class="ev ${cls}" data-act="openLesson" data-id="${l.id}" style="top:${(s - a) * px + 5}px;height:${hgt}px;left:calc(${lane * w}% + 2px);width:calc(${w}% - 4px);right:auto">
@@ -213,7 +222,7 @@ function timeGrid(days) {
 function monthGrid(d) {
   const t = today(), ms = monthStart(d), me = monthEnd(d);
   const a = weekStart(ms); let b = addDays(weekStart(me), 6);
-  const all = occurrences(a, b);
+  const all = occurrences(a, b), shw = showItems(a, b);
   const cells = [];
   for (let x = a; x <= b; x = addDays(x, 1)) cells.push(x);
   const ws = S.settings.weekStart ?? 1;
@@ -221,7 +230,7 @@ function monthGrid(d) {
     ${cells.map(x => {
     const ls = all.filter(l => l.date === x);
     const shut = S.closures.some(c => x >= c.from && x <= (c.to || c.from));
-    return `<button class="md ${x.slice(0, 7) !== ms.slice(0, 7) ? 'out' : ''} ${x === t ? 'today' : ''} ${shut ? 'closedday' : ''}" data-act="calDay" data-d="${x}"><span class="n">${parseD(x).getDate()}</span>${shut ? '<span class="xs dim" style="font-size:9.5px">Sin clases</span>' : ''}
+    return `<button class="md ${x.slice(0, 7) !== ms.slice(0, 7) ? 'out' : ''} ${x === t ? 'today' : ''} ${shut ? 'closedday' : ''}" data-act="calDay" data-d="${x}"><span class="n">${parseD(x).getDate()}</span>${shut ? '<span class="xs dim" style="font-size:9.5px">Sin clases</span>' : ''}${[...new Set(shw.filter(s => s.date === x).map(s => s.showId))].map(id => `<span class="e show">🎤 ${esc(showById(id).title)}</span>`).join('')}
         ${ls.slice(0, 3).map(l => `<span class="e ${isEvent(l) ? 'event' : lessonMode(l)} ${OFF.includes(stOf(l)) || l.status === 'absent' ? 'off' : ''}">${l.status === 'done' ? '✓' : ''}${esc(lessonTitle(l).split(' ')[0])}</span>`).join('')}
         ${ls.length > 3 ? `<span class="more">+${ls.length - 3}</span>` : ''}</button>`;
   }).join('')}</div>

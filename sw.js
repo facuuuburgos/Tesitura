@@ -1,9 +1,9 @@
 // Permite que la app funcione sin internet y se actualice sola.
 // Los archivos de la app se buscan primero en internet (así siempre ves la última versión subida a GitHub);
 // sin conexión, o si tarda más de 4 segundos, se usa la copia guardada en el teléfono.
-const CACHE = 'tesitura-v7';
+const CACHE = 'tesitura-v8';
 const ASSETS = ['./', './index.html', './styles.css', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png',
-  './js/core.js', './js/ui.js', './js/lessons.js', './js/students.js', './js/views.js', './js/stats.js', './js/settings.js', './js/app.js'];
+  './js/core.js', './js/ui.js', './js/lessons.js', './js/students.js', './js/shows.js', './js/views.js', './js/stats.js', './js/settings.js', './js/app.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))));
