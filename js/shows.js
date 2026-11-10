@@ -242,3 +242,116 @@ function showItems(a, b) {
   S.shows.filter(s => s.date >= a && s.date <= b).forEach(sh => showBlocks(sh).forEach(bl => out.push({ id: 'show:' + sh.id + ':' + bl.id, showId: sh.id, date: sh.date, start: bl.start, duration: Math.max(15, toMin(blockEnd(sh, bl)) - toMin(bl.start)), title: sh.title + (bl.title ? ' · ' + bl.title : ''), isShow: true })));
   return out;
 }
+
+/* =========================================================
+   Importar shows desde un archivo (por ejemplo, armado a partir de las planillas de la escuela)
+   Solo se suman los alumnos que ya están registrados en la app.
+   ========================================================= */
+const normName = s => norm(s).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+function lev(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length, d = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n];
+}
+// busca al alumno por nombre: exacto, o con diferencias mínimas de tipeo ("Isabell" / "Isabel")
+function matchStudent(name) {
+  const n = normName(name); if (!n) return null;
+  const all = S.students.map(s => ({ s, k: normName(sName(s)) }));
+  const ex = all.find(x => x.k === n); if (ex) return { st: ex.s, exact: true };
+  const tk = n.split(' ');
+  const cands = all.filter(x => {
+    const xt = x.k.split(' ');
+    if (xt.length < 2 || tk.length < 2) return false;
+    const firstOk = lev(xt[0], tk[0]) <= (tk[0].length > 4 ? 1 : 0) || xt[0].startsWith(tk[0]) || tk[0].startsWith(xt[0]);
+    const lastOk = lev(xt[xt.length - 1], tk[tk.length - 1]) <= 1;
+    return firstOk && lastOk;
+  }).concat(all.filter(x => lev(x.k, n) <= 2));
+  const uniq = [...new Set(cands.map(c => c.s))];
+  return uniq.length === 1 ? { st: uniq[0], exact: false } : null;
+}
+ACT.importShows = () => {
+  const f = document.createElement('input'); f.type = 'file'; f.accept = 'application/json,.json';
+  f.onchange = async () => {
+    try {
+      const d = JSON.parse(await f.files[0].text());
+      if (!d || d.type !== 'tesitura-shows' || !Array.isArray(d.shows)) throw new Error('El archivo no es una importación de shows de Tesitura');
+      importPreview(d);
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  f.click();
+};
+function importPreview(d) {
+  const times = Object.assign({ tarde: '18:00', noche: '21:00' }, d.times || {});
+  const opt = { createMine: false, schoolId: (activeSchools()[0] || {}).id };
+  const plan = () => d.shows.map(sh => ({ sh, rows: sh.rows.map(r => ({ r, m: matchStudent(r.name) })) }));
+  openSheet({
+    wide: true,
+    title: 'Importar shows',
+    body: () => {
+      const P = plan();
+      const matched = P.reduce((a, x) => a + x.rows.filter(y => y.m).length, 0);
+      const mineMissing = P.flatMap(x => x.rows.filter(y => !y.m && y.r.mine).map(y => ({ ...y, show: x.sh })));
+      return `<div class="muted small" style="margin:-4px 0 14px">${esc(d.source || '')}<br>Se crean ${d.shows.length} shows. Solo se suman los alumnos que ya tenés registrados (${matched} encontrados), con su canción, link y tono. No se modifica nada fuera de la app.</div>
+        <div class="grid2">${field('Hora de las funciones de la tarde', `<input class="inp" type="time" data-time="tarde" value="${times.tarde}">`)}${field('Hora de las funciones de la noche', `<input class="inp" type="time" data-time="noche" value="${times.noche}">`)}</div>
+        <div class="hint">Las planillas no traen horarios: ajustalos acá o después en cada show.</div>
+        ${P.map(x => { const found = x.rows.filter(y => y.m); return `<div class="group-t">${esc(x.sh.title)} · ${fmtDate(x.sh.date, { dow: 1 })} · ${times[x.sh.part] || ''}</div>
+          ${found.length ? `<div class="list">${found.map(y => `<div class="li av">${avatar(y.m.st, 'sm')}<div class="grow" style="min-width:0"><div class="t ell">${esc(sName(y.m.st))}${y.m.exact ? '' : ` <span class="pill st-absent">en la planilla: ${esc(y.r.name)}</span>`}</div><div class="s ell">${y.r.song ? esc(y.r.song) + (y.r.artist ? ' · ' + esc(y.r.artist) : '') + ' · ' + semisTxt(y.r.semis) : 'Canción a definir'}${y.r.link ? '' : ' · sin link'}</div></div></div>`).join('')}</div>` : '<div class="card small muted">Ninguno de tus alumnos registrados en esta función.</div>'}`; }).join('')}
+        ${mineMissing.length ? `<div class="group-t">Figuran con profe “Facu” pero no están en la app</div><div class="card small">${mineMissing.map(y => `${esc(y.r.name)} <span class="muted">(${esc(y.show.title.replace('Zitarrosa · ', ''))})</span>`).join(' · ')}</div>
+          <div class="list" style="margin-top:8px">${sw('createMine', opt.createMine, 'Crear también estos alumnos', 'Se agregan como alumnos nuevos y se suman a su show')}</div>
+          ${opt.createMine && activeSchools().length > 1 ? field('Escuela para los alumnos nuevos', sel('schoolId', opt.schoolId, activeSchools().map(s => [s.id, s.name]))) : ''}` : ''}
+        <div class="sp"></div><button class="btn pri full" data-go-imp>${ic('check', 'sm')}Crear los ${d.shows.length} shows</button>`;
+    },
+    mount: (el, sh) => {
+      el.querySelectorAll('[data-time]').forEach(i => i.onchange = () => { times[i.dataset.time] = i.value; });
+      const c = el.querySelector('[name=createMine]'); if (c) c.onchange = () => { opt.createMine = c.checked; sh.render(); };
+      const sc = el.querySelector('[name=schoolId]'); if (sc) sc.onchange = () => { opt.schoolId = sc.value; };
+      el.querySelector('[data-go-imp]').onclick = () => {
+        const n = runImport(d, times, opt);
+        save(); closeAll(); go('#/shows');
+        toast(`${n.shows} shows listos · ${n.acts} canciones · ${n.people} alumnos`);
+      };
+    }
+  });
+}
+function runImport(d, times, opt) {
+  const cnt = { shows: 0, acts: 0, people: new Set() };
+  for (const src of d.shows) {
+    const start = times[src.part] || '19:00';
+    let sh = S.shows.find(x => x.title === src.title && x.date === src.date);
+    if (!sh) sh = { id: uid(), title: src.title, date: src.date, venue: src.venue || '', notes: '', blocks: [{ id: uid(), start, end: '', title: '' }], acts: [], people: [] };
+    else if (sh.blocks && sh.blocks[0]) sh.blocks[0].start = start;
+    const blockId = sh.blocks[0].id;
+    for (const r of src.rows) {
+      let m = matchStudent(r.name), st = m && m.st;
+      if (!st && r.mine && opt.createMine) {
+        const parts = r.name.trim().split(/\s+/);
+        st = upsert('students', { id: uid(), first: parts[0], last: parts.slice(1).join(' '), status: 'active', schoolId: opt.schoolId, photo: '' });
+      }
+      if (!st) continue;
+      cnt.people.add(st.id);
+      sh.people = sh.people || [];
+      if (!sh.people.some(p => p.studentId === st.id)) sh.people.push({ studentId: st.id, attend: 'pending' });
+      let ssId = '';
+      if (r.song) {
+        // canción en el repertorio del alumno: se reutiliza si ya la tiene, si no se agrega
+        let ss = S.studentSongs.find(x => x.studentId === st.id && !x.endedAt && norm((byId('songs', x.songId) || {}).title) === norm(r.song));
+        if (ss) {
+          if (!ss.link && r.link) ss.link = r.link;
+          if (semisOf(ss) !== r.semis) { ss.keyHistory = [...(ss.keyHistory || []), { until: today(), t: semisOf(ss) }]; ss.transpose = r.semis; ss.manual = false; ss.workKey = null; }
+          if (r.notes && !(ss.notes || '').includes(r.notes)) ss.notes = [ss.notes, r.notes].filter(Boolean).join('\n');
+          upsert('studentSongs', ss);
+        } else {
+          const song = S.songs.find(x => norm(x.title) === norm(r.song) && (!r.artist || !x.artist || norm(x.artist) === norm(r.artist))) || upsert('songs', { id: uid(), title: r.song, artist: r.artist || '' });
+          ss = upsert('studentSongs', { id: uid(), studentId: st.id, songId: song.id, transpose: r.semis || 0, startedAt: today(), endedAt: '', link: r.link || '', karaoke: '', recordings: [], notes: r.notes || '' });
+        }
+        ssId = ss.id;
+      }
+      const exists = (sh.acts || []).some(a => (a.studentIds || []).includes(st.id) && (ssId ? a.ssId === ssId : !a.ssId));
+      if (!exists) { sh.acts = sh.acts || []; sh.acts.push({ id: uid(), blockId, studentIds: [st.id], ssId, title: ssId ? '' : 'Canción a definir', notes: '', order: actsOf(sh, blockId).length + 1 }); cnt.acts++; }
+    }
+    upsert('shows', sh); cnt.shows++;
+  }
+  return { shows: cnt.shows, acts: cnt.acts, people: cnt.people.size };
+}

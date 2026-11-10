@@ -58,6 +58,7 @@ VIEWS.settings = () => {
     <div class="list">
       ${L('Exportar copia de seguridad', 'Archivo con todos tus datos', ic('download', 'sm'), 'backup')}
       ${L('Restaurar copia de seguridad', 'Reemplaza los datos de este dispositivo', ic('upload', 'sm'), 'restore')}
+      ${L('Importar shows desde archivo', 'Crea los shows con tus alumnos registrados', ic('upload', 'sm'), 'importShows')}
       ${L('Exportar todo a Excel', 'Alumnos, clases, repertorio y registros', ic('table', 'sm'), 'exportAllXls')}
       ${L('<span style="color:var(--bad)">Borrar todos los datos</span>', '', '', 'wipe')}
     </div>
